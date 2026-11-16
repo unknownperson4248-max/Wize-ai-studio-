@@ -4,22 +4,9 @@ compatibility_date = "2024-09-03"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = false
 
-[env.dev]
-name = "wize-ai-studio-dev"
-
-[env.dev.vars]
-ENVIRONMENT = "development"
-
-[env.production]
-name = "wize-ai-studio-prod"
-
-[env.production.vars]
-ENVIRONMENT = "production"
-
 [vars]
-ENVIRONMENT = "development"
+ENVIRONMENT = "production"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "wize-ai-studio-db"
-primary_key = "id"
