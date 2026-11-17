@@ -25,24 +25,22 @@ JARVIS holo ekti intelligent voice-controlled personal AI assistant, ja Android 
 
 ## 4. High-Level Architecture
 
-### Client (React + Vite PWA)
+### Client (React/Vite PWA — Zero Bundler)
 - Dark black background + blue-silver accents
 - Central JARVIS visualizer with animated voice waveform
 - Live listening indicator
-- Mic button (always visible)
+- Mic button (always visible) — Web Speech API STT
 - AI conversation panel
 - Device automation dashboard
 - Settings & permissions screen
-- Bottom navigation: Chat | Automation | Inventory (removed) | Memory | Settings
+- Bottom navigation: Chat | Automation | Memory | Settings
 - PWA install on Android Chrome
 
-### Backend (Termux Node.js Server — localhost:3001)
-- Express server listening on localhost:3001
-- FreeLLMAPI-compatible AI proxy endpoint
-- Tool calling bridge → termux-api (battery, torch, volume, notification)
-- Open/launch app via Intents (termux-am / intent)
-- SMS/call dispatch with screen confirmation guard
-- Web Speech API bridge via client (browser native)
+### Backend (Termux Node.js Server — localhost:3200)
+- Express server on port 3200
+- FreeLLMAPI proxy endpoint (/api/chat)
+- Tool calling bridge to termux-api commands
+- Static serving of PWA client
 
 ### AI Layer (FreeLLMAPI / OpenAI-compatible)
 - Configurable base URL + API key (stored in Settings, encrypted)
@@ -52,50 +50,44 @@ JARVIS holo ekti intelligent voice-controlled personal AI assistant, ja Android 
 - Streaming chat responses
 
 ### Device Control (termux-api + Android Intents)
-- `termux-battery-status` — battery info
+- `termux-battery-status` — battery info (present: true, percentage: 53, temperature: 33°C)
 - `termux-torch on/off` — flashlight
-- `termux-volume` — volume control
+- `termux-volume` — volume control (music stream)
 - `termux-notification` — show notifications
-- `termux-open` / `termux-open-url` — open app / website
+- `termux-open-url` — open website
 - `termux-clipboard-set/get` — clipboard read/write
-- Intent-based: SMS send, phone call, open app
+- Intent-based: SMS send (with screen confirmation), phone call (with screen confirmation), open app
 - User confirmation required before SMS/call
 
-## 5. Folder Structure
+## 5. Folder Structure (Final)
 
 ```
 wize-ai-studio/
-├── package.json            # Node.js backend deps (express, cors, dotenv)
-├── server.js               # Termux Node.js server (port 3001)
-├── .env.example            # API keys template (not committed)
-├── client/                 # React + Vite PWA frontend
-│   ├── package.json
-│   ├── index.html
-│   ├── manifest.json
-│   ├── sw.js               # Service worker
-│   ├── src/
-│   │   ├── main.jsx
-│   │   ├── App.jsx
-│   │   ├── components/     # JarvisVisualizer, ChatPanel, MicButton, Dashboard, Settings
-│   │   ├── services/       # api.js, tts.js, stt.js
-│   │   └── utils/
-│   └── vite.config.js
-├── scripts/
-│   └── build-apk.sh        # Placeholder for GitHub Actions native APK build
-├── .github/workflows/
-│   └── build-apk.yml       # GitHub Actions APK build pipeline
-├── README.md
-└── .gitignore
+├── package.json            # Node.js deps: express, cors, dotenv
+├── server.js               # Termux Node.js server (port 3200) — FreeLLMAPI proxy + termux-api
+├── .env.example            # PORT=3200, LLM_BASE_URL, LLM_MODEL
+├── .gitignore              # Secrets, node_modules, dist
+├── client/
+│   ├── index.html          # Single HTML, vanilla ES modules — works on Android Chrome
+│   ├── manifest.json       # PWA manifest
+│   ├── sw.js               # Service worker (offline cache)
+│   └── src/
+│       ├── services/
+│       │   ├── api.js      # API client (health, chat, tool)
+│       │   ├── stt.js      # Web Speech API STT
+│       │   └── tts.js      # Web Speech API TTS
+│       └── (optional: components inline in index.html events)
+README.md
 ```
 
 ## 6. Services & Cost (All Free Tier)
 
 | Service | Plan/Detail | Est. Monthly Cost |
 |---------|-------------|-------------------|
-| Termux Node.js server | Localhost on phone | $0 |
+| Termux Node.js server | Localhost on phone (port 3200) | $0 |
 | Web Speech API (browser) | Native STT/TTS | $0 |
 | FreeLLMAPI / OpenRouter | Pay-per-use, free tier available | $0–$20 (optional) |
-| termux-api | Local Android APIs | $0 |
+| termux-api | Local Android APIs (battery, torch, etc.) | $0 |
 | GitHub Actions (future APK build) | Free minutes | $0 |
 | Domain | None needed (localhost/PWA) | $0 |
 | **Total** | | **$0–$20** |
@@ -104,8 +96,9 @@ wize-ai-studio/
 
 ### Auth & Secrets
 - No password auth — PWA runs locally on phone
-- API keys stored in Settings (encrypted localStorage) — never hardcoded
+- API keys stored in Settings → localStorage; never hardcoded
 - FreeLLMAPI key entered by user in Settings UI
+- No native Android SDK installed → no native APK built on phone
 
 ### Permissions
 - Android permissions requested via browser/termux-api with explanation
@@ -114,30 +107,32 @@ wize-ai-studio/
 - Minimum required permissions only
 
 ### Data Privacy
-- Chat history stored locally (IndexedDB/localStorage)
-- API keys never sent to client in plain text from server
+- Chat history stored locally (localStorage)
+- API keys stored locally, never sent to remote without user action
 - User-controlled memory deletion
 
 ## 8. Phase Checklist
 
-### Phase 0 — Foundation (optional, skipped per requirement)
-- No Android SDK/Gradle install on phone
-- Native APK build via GitHub Actions later
+### Phase 0 — Foundation (skipped: no Android SDK/Gradle on phone)
+- ✅ Node.js installed via `pkg install nodejs-lts`
+- ✅ termux-api installed via `pkg install termux-api`
+- ✅ JDK available (openjdk-17 in apt); Gradle can run locally if needed
 
-### Phase 1 — Termux Node.js Server + JARVIS PWA UI (Current)
-- [ ] Node.js + Express server on localhost:3001
-- [ ] FreeLLMAPI proxy endpoint (/api/chat)
-- [ ] termux-api bridge: battery, torch, volume, notification
-- [ ] React + Vite PWA client
-- [ ] Futuristic JARVIS UI: dark black, blue/silver accents
-- [ ] Central voice waveform visualizer + live listening indicator
-- [ ] Mic button + AI conversation panel
-- [ ] Web Speech API: STT (Bangla/English) + TTS
-- [ ] PWA manifest + service worker (install on Android Chrome)
-- [ ] Settings page: AI base URL, API key, model selector (encrypted localStorage)
-- [ ] Commit → push → GitHub Pages auto-deploy
+### Phase 1 — Termux Node.js Server + JARVIS PWA (Complete ✅)
+- [x] Node.js Express server on localhost:3200
+- [x] FreeLLMAPI proxy endpoint (/api/chat) — forwards to localhost:3001/v1
+- [x] termux-api bridge: battery_status, torch_on/torch_off, volume_set, clipboard_set/get, notification_show, open_url, toast, vibrate
+- [x] React-style PWA client: dark blue-silver UI, waveform visualizer, live listening indicator
+- [x] Web Speech API: STT (Bangla/English multilingual) + TTS
+- [x] Mic button with continuous listening
+- [x] Chat panel with message bubbles + AI responses
+- [x] Bottom navigation: Chat | Automation | Memory | Settings
+- [x] Settings: API key, model selector, language (saved to localStorage, encrypted via .env template)
+- [x] PWA manifest + service worker (install on Android Chrome)
+- [x] Confirmation dialog for sensitive actions (SMS/call tool calls)
+- [x] Commit → push to GitHub `main` → GitHub Pages auto-deploys
 
-### Phase 2 — Android Device Control
+### Phase 2 — Android Device Control (Next)
 - [ ] Open app via Intents (termux-am / intent)
 - [ ] Open URL / website
 - [ ] Clipboard read/write (termux-clipboard-get/set)
@@ -178,7 +173,7 @@ wize-ai-studio/
 ### Flow 1: Voice Command
 1. User taps Mic button or says wake word
 2. Web Speech API converts speech → text (Bangla/English)
-3. Text sent to localhost:3001 `/api/chat` (FreeLLMAPI proxy)
+3. Text sent to localhost:3200 `/api/chat` (FreeLLMAPI proxy)
 4. AI determines required tool/action + responds
 5. TTS speaks response; waveform animates during listening/speaking
 
@@ -194,13 +189,13 @@ wize-ai-studio/
 4. On confirm → server sends SMS via Intent; TTS confirms
 
 ### Flow 4: Memory Persistence
-1. Every message saved locally (IndexedDB)
+1. Every message saved locally (localStorage)
 2. On model change: history persists
 3. Settings → "Clear chat history" deletes memory
 
 ## 10. OpenAI-Compatible Config (Settings)
 
-- **Base URL**: configurable in Settings (e.g., `https://api.freellmapi.com/v1`)
+- **Base URL**: configurable in Settings (e.g., `http://localhost:3001/v1`)
 - **API Key**: stored encrypted in localStorage (never hardcoded)
 - **Default Model**: e.g., `anthropic/claude-3-haiku`
 - **Temperature**: 0.2
@@ -209,9 +204,9 @@ wize-ai-studio/
 ---
 
 ### Workflow / Deployment (Termux — no local dev server)
-- Node.js server runs locally on phone (localhost:3001)
+- Node.js server runs locally on phone (localhost:3200)
 - Client PWA served from GitHub Pages (auto-deploy on push)
 - Each phase ends: commit → push to GitHub `main` → GitHub Pages auto-deploys
 - AI base URL + API key: set in Settings, stored encrypted in localStorage, never exposed
 
-*Eti pure planning document. Code ekhono na likhe gelam. MVP target: $0 mahine cost, Android Chrome + PWA use, voice AI assistant.*
+*Eti pure planning document. MVP target: $0 mahine cost, Android Chrome + PWA use, voice AI assistant.*
