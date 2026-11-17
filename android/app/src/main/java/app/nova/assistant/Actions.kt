@@ -63,7 +63,7 @@ class Actions(private val ctx: Context) {
     }
 
     /** Taps that send, pay, delete, buy or post always need a Yes from the user, whatever the AI says. */
-    fun risky(name: String, a: JSONObject) = name == "tap" && RISKY.containsMatchIn(a.optString("target"))
+    fun risky(name: String, a: JSONObject) = name == "tap" && Safety.isRiskyTap(a.optString("target"))
 
     /** Status text while an action runs. */
     fun label(name: String) = when (name) {
@@ -87,9 +87,7 @@ class Actions(private val ctx: Context) {
     private fun whatsapp(to: String, message: String): String {
         if (message.isBlank()) return "Failed: no message given."
         val (number, who) = resolveNumber(to)
-        var digits = number.filter { it.isDigit() }
-        if (digits.startsWith("00")) digits = digits.drop(2)
-        if (digits.length == 11 && digits.startsWith("01")) digits = "88$digits" // Bangladesh mobile without country code
+        val digits = Safety.whatsappNumber(number)
         val pkg = listOf("com.whatsapp", "com.whatsapp.w4b").firstOrNull { installed(it) } ?: return "Failed: WhatsApp is not installed."
         val i = Intent(Intent.ACTION_VIEW, Uri.parse("https://api.whatsapp.com/send?phone=$digits&text=" + Uri.encode(message))).setPackage(pkg)
         val opened = start(i, "ok")
@@ -98,9 +96,6 @@ class Actions(private val ctx: Context) {
         return if (svc.pressSend(pkg)) "Sent on WhatsApp to $who." else "The message to $who is written in WhatsApp, but I could not press send. The user presses send."
     }
 
-    companion object {
-        private val RISKY = Regex("(?i)send|pay|buy|purchase|order|checkout|transfer|delete|remove|uninstall|install|confirm|post|submit|publish|call|পাঠা|ডিলিট|মুছ|কিন|পেমেন্ট|bkash|nagad")
-    }
 
     private fun start(i: Intent, ok: String, fallback: Intent? = null): String {
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

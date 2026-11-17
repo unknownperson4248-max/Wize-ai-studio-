@@ -36,5 +36,20 @@ class Prefs(context: Context) {
         get() = p.getInt("bubbleY", -1)
         set(v) = p.edit().putInt("bubbleY", v).apply()
 
+    /** Emergency stop / pause: while true, no phone action runs. */
+    var automationPaused: Boolean
+        get() = p.getBoolean("paused", false)
+        set(v) = p.edit().putBoolean("paused", v).apply()
+
+    /** Text-to-speech speed, 0.5 .. 2.0 (1.0 normal). */
+    var voiceRate: Float
+        get() = p.getFloat("voiceRate", 1.0f)
+        set(v) = p.edit().putFloat("voiceRate", v).apply()
+
+    /** Text-to-speech volume, 0.0 .. 1.0, relative to the media volume. */
+    var voiceVolume: Float
+        get() = p.getFloat("voiceVolume", 1.0f)
+        set(v) = p.edit().putFloat("voiceVolume", v).apply()
+
     val paired get() = token.length == 64
 }

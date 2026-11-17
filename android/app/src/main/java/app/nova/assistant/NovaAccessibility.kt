@@ -61,7 +61,7 @@ class NovaAccessibility : AccessibilityService(), Brain.Ui {
         super.onServiceConnected()
         wm = getSystemService(WindowManager::class.java)
         prefs = Prefs(this)
-        brain = Brain(this, this)
+        brain = Brain(this, this, "bubble")
         instance = this
         refreshBubble()
     }
@@ -81,6 +81,19 @@ class NovaAccessibility : AccessibilityService(), Brain.Ui {
         brain?.close()
         super.onDestroy()
     }
+
+    /** Emergency stop from the app: drop the bubble's running task and close any approval card. */
+    fun stopTask() {
+        main.post { brain?.stop(); removeConfirm(); removeBalloon() }
+    }
+
+    /** Switches phone control off from inside the app (the user asked to). */
+    fun turnOff() {
+        main.post { brain?.stop(); removeAll(); disableSelf() }
+    }
+
+    /** Name of the app on screen now (for the action log and the Phone Control screen). */
+    fun currentApp(): String = rootInActiveWindow?.packageName?.toString()?.let { appLabel(it) }.orEmpty()
 
     /** Something the user said through the bubble. */
     fun ask(text: String) {

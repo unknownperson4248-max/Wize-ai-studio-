@@ -24,7 +24,12 @@ import kotlin.math.sin
  * The animated start screen: a drifting star field over a moving neon grid, NOVA's face building up
  * like a hologram, then the name and a Start button. Tap anywhere to skip once the app is set up.
  */
-class IntroView(context: Context, private val autoClose: Boolean, private val onDone: () -> Unit) : FrameLayout(context) {
+class IntroView(
+    context: Context,
+    private val autoClose: Boolean,
+    private val removeSelf: Boolean = true,
+    private val onDone: () -> Unit,
+) : FrameLayout(context) {
 
     private val face = AvatarView(context).apply { reveal = 0f }
     private val title = TextView(context)
@@ -87,7 +92,7 @@ class IntroView(context: Context, private val autoClose: Boolean, private val on
         if (closing) return
         closing = true
         animate().alpha(0f).scaleX(1.06f).scaleY(1.06f).setDuration(450).withEndAction {
-            (parent as? ViewGroup)?.removeView(this)
+            if (removeSelf) (parent as? ViewGroup)?.removeView(this)
             onDone()
         }.start()
     }

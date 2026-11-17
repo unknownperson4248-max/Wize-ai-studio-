@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Change the assistant's name here (and ASSISTANT_NAME in worker/src/index.js). -->
-    <string name="app_name">NOVA</string>
-    <string name="control_label">NOVA phone control</string>
-    <string name="control_desc">Lets NOVA read the screen and tap, type and scroll in other apps when you ask it to, and shows the floating NOVA bubble. NOVA asks you before sending, paying, buying, deleting or posting, and never types into password fields.</string>
+    <!-- The assistant's name (also ASSISTANT_NAME in worker/src/index.js). -->
+    <string name="app_name">JARVIS</string>
+    <string name="control_label">JARVIS phone control</string>
+    <string name="control_desc">Lets JARVIS read the screen and tap, type and scroll in other apps when you ask it to, and shows the floating JARVIS bubble. JARVIS asks you before sending, paying, buying, deleting or posting, and never types into password fields.</string>
 </resources>

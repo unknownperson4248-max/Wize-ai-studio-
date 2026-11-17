@@ -3,7 +3,7 @@
 // long-term memory in D1, asks the model, and returns the reply plus any phone actions for the app to run.
 import { MODEL_TOOLS, TOOL_BY_NAME, REPEATABLE } from './tools.js';
 
-const ASSISTANT_NAME = 'NOVA'; // change the name here (and in the app's strings.xml)
+const ASSISTANT_NAME = 'JARVIS'; // change the name here (and in the app's strings.xml)
 const MODELS = ['@cf/meta/llama-3.3-70b-instruct-fp8-fast', '@cf/meta/llama-4-scout-17b-16e-instruct'];
 const HISTORY_TURNS = 30;
 const MAX_TEXT = 2000;
@@ -74,7 +74,7 @@ function systemPrompt(mem, ctx) {
   let when = now.toISOString();
   try { when = now.toLocaleString('en-GB', { timeZone: ctx.tz || 'UTC', dateStyle: 'full', timeStyle: 'short' }); } catch {}
   return [
-    `You are ${ASSISTANT_NAME}, a personal voice assistant running on the user's Android phone.`,
+    `You are ${ASSISTANT_NAME}, a personal and business voice assistant running on the user's Android phone. Be calm, capable and brief, like a trusted aide.`,
     'Reply in the language the user used (Bangla, English, or Bangla written in English letters). Keep replies short and natural, because they are spoken aloud.',
     'When the user wants something done on the phone, call the matching tool instead of describing it. Call one tool at a time.',
     'Never say an action is done until you get its result. When a [result of ...] arrives, either take the next step of the task or, if the task is finished, answer in one short sentence.',

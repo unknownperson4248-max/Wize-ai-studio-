@@ -1,6 +1,7 @@
 package app.nova.assistant
 
 import android.content.Context
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
@@ -8,7 +9,7 @@ import android.speech.tts.UtteranceProgressListener
 import java.util.Locale
 
 /** Spoken replies with Android text-to-speech. Picks Bangla or English from the text itself. */
-class Voice(context: Context, private val onSpeaking: (Boolean) -> Unit) {
+class Voice(context: Context, private val prefs: Prefs, private val onSpeaking: (Boolean) -> Unit) {
 
     private val main = Handler(Looper.getMainLooper())
     private var ready = false
@@ -27,7 +28,9 @@ class Voice(context: Context, private val onSpeaking: (Boolean) -> Unit) {
         val bangla = text.any { it in 'ঀ'..'৿' }
         val loc = if (bangla) Locale("bn", "BD") else Locale.US
         if (tts.isLanguageAvailable(loc) >= TextToSpeech.LANG_AVAILABLE) tts.language = loc
-        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "nova-" + System.nanoTime())
+        tts.setSpeechRate(prefs.voiceRate.coerceIn(0.5f, 2f))
+        val params = Bundle().apply { putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, prefs.voiceVolume.coerceIn(0f, 1f)) }
+        tts.speak(text, TextToSpeech.QUEUE_FLUSH, params, "jarvis-" + System.nanoTime())
     }
 
     fun stop() { tts.stop() }

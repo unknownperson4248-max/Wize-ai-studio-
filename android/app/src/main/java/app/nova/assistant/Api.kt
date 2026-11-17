@@ -78,4 +78,13 @@ class Api(private val prefs: Prefs) {
     }
 
     fun deleteMemory(id: Int) { request("DELETE", "/api/memories/$id") }
+
+    fun unpair() { request("POST", "/api/unpair") }
+
+    /** Server check without the device token: returns a short description, or throws when unreachable. */
+    fun health(): String {
+        val r = request("GET", "/api/health", auth = false)
+        if (!r.optBoolean("ok")) throw ApiError("The server did not answer correctly.")
+        return "Workers AI · server v" + r.optInt("version", 1)
+    }
 }

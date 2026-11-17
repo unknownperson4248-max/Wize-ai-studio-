@@ -1,321 +1,219 @@
 package app.nova.assistant
 
 import android.Manifest
-import android.app.Activity
-import android.app.AlertDialog
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Color
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.provider.Settings
 import android.speech.RecognizerIntent
-import android.text.InputType
-import android.util.TypedValue
-import android.view.Gravity
-import android.view.View
-import android.view.ViewGroup
-import android.view.inputmethod.EditorInfo
-import android.widget.CheckBox
-import android.widget.EditText
-import android.widget.FrameLayout
-import android.widget.LinearLayout
-import android.widget.RadioButton
-import android.widget.RadioGroup
-import android.widget.ScrollView
-import android.widget.TextView
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.lifecycleScope
+import app.nova.assistant.data.JarvisDb
+import app.nova.assistant.ui.Approval
+import app.nova.assistant.ui.ChatMsg
+import app.nova.assistant.ui.Controller
+import app.nova.assistant.ui.CoreState
+import app.nova.assistant.ui.JarvisApp
+import app.nova.assistant.ui.theme.JarvisTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
-class MainActivity : Activity(), Brain.Ui, Ears.Listener {
+/** The JARVIS app: hosts the screens, the voice, and the conversation loop for the app (the bubble has its own). */
+class MainActivity : ComponentActivity(), Controller, Brain.Ui, Ears.Listener {
 
     companion object {
         const val EXTRA_ASK = "ask"
         const val EXTRA_PERMISSION = "permission"
-        private const val REQ_MIC = 1
-        private const val REQ_ACTION = 2
-        private const val REQ_OTHER = 3
-        private const val REQ_VOICE = 7
     }
 
-    private lateinit var prefs: Prefs
-    private lateinit var brain: Brain
-    private lateinit var ears: Ears
-    private lateinit var orb: OrbView
-    private lateinit var statusView: TextView
-    private lateinit var setupChip: TextView
-    private lateinit var list: LinearLayout
-    private lateinit var scroll: ScrollView
-    private lateinit var input: EditText
-    private lateinit var mic: TextView
+    override val state = CoreState()
+    private val brain by lazy { Brain(this, this, "app") }
+    private val ears by lazy { Ears(this, this) }
+    override val prefs: Prefs by lazy { brain.prefs }
+    override val db: JarvisDb by lazy { JarvisDb.get(this) }
     private val main = Handler(Looper.getMainLooper())
-    private var listening = false
+    private var listenAfterGrant = false
     private var permissionAnswer: ((Boolean) -> Unit)? = null
+    private val ticker = object : Runnable {
+        override fun run() { refresh(); main.postDelayed(this, 3000) }
+    }
 
-    private val cyan = Color.parseColor("#38E8FF")
-    private val violet = Color.parseColor("#8B5CF6")
-    private val ink = Color.parseColor("#EAF2FF")
-    private val muted = Color.parseColor("#8A97AD")
-    private val panel = Color.parseColor("#0E1420")
-
-    private fun dp(v: Int) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), resources.displayMetrics).toInt()
-    private fun round(color: Int, radius: Int, stroke: Int = 0) = GradientDrawable().apply {
-        setColor(color); cornerRadius = dp(radius).toFloat(); if (stroke != 0) setStroke(dp(1), stroke)
+    private val micPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        refresh()
+        if (ok && listenAfterGrant) startListening()
+        if (!ok) note("The microphone permission is needed to talk to me.")
+        listenAfterGrant = false
+    }
+    private val otherPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        refresh()
+        val a = permissionAnswer
+        permissionAnswer = null
+        a?.invoke(ok)
+    }
+    private val voiceDialog = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        val said = r.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.trim().orEmpty()
+        if (r.resultCode == RESULT_OK && said.isNotEmpty()) send(said)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        brain = Brain(this, this)
-        prefs = brain.prefs
-        ears = Ears(this, this)
-        val frame = FrameLayout(this)
-        frame.addView(buildUi())
-        setContentView(frame)
         val assist = intent?.action == Intent.ACTION_ASSIST
-        val ready = {
-            if (!prefs.paired) showSettings(true)
-            else {
-                loadHistory()
-                if (assist) main.postDelayed({ startListening() }, 300) else handleExtras(intent)
-            }
-            updateChip()
-        }
-        if (assist || savedInstanceState != null) ready()
-        else frame.addView(IntroView(this, autoClose = prefs.paired) { ready() })
+        state.showIntro = savedInstanceState == null && !assist
+        refresh()
+        if (prefs.paired) loadHistory()
+        checkAi()
+        setContent { JarvisTheme { JarvisApp(this) } }
+        if (assist && prefs.paired) { state.goTo = "core"; main.postDelayed({ startListening() }, 300) }
+        handleExtras(intent)
     }
 
-    override fun onNewIntent(intent: Intent?) {
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (intent?.action == Intent.ACTION_ASSIST && prefs.paired) startListening() else handleExtras(intent)
+        if (intent.action == Intent.ACTION_ASSIST && prefs.paired) { state.goTo = "core"; startListening() } else handleExtras(intent)
     }
 
-    override fun onResume() {
-        super.onResume()
-        updateChip()
-    }
+    override fun onResume() { super.onResume(); main.post(ticker) }
+    override fun onPause() { main.removeCallbacks(ticker); super.onPause() }
 
     override fun onDestroy() {
+        main.removeCallbacksAndMessages(null)
         ears.stop(); brain.close()
         super.onDestroy()
     }
 
     private fun handleExtras(i: Intent?) {
         if (i == null) return
-        i.getStringExtra(EXTRA_ASK)?.let { i.removeExtra(EXTRA_ASK); send(it) }
-        i.getStringExtra(EXTRA_PERMISSION)?.let { i.removeExtra(EXTRA_PERMISSION); requestPermissions(arrayOf(it), REQ_OTHER) }
+        i.getStringExtra(EXTRA_ASK)?.let { i.removeExtra(EXTRA_ASK); state.goTo = "core"; send(it) }
+        i.getStringExtra(EXTRA_PERMISSION)?.let { i.removeExtra(EXTRA_PERMISSION); otherPermission.launch(it) }
     }
 
-    /* ---------------- layout ---------------- */
+    private fun granted(p: String) = checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED
 
-    private fun buildUi(): View {
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; fitsSystemWindows = true; setPadding(dp(16), dp(8), dp(16), dp(12)) }
-
-        val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        top.addView(TextView(this).apply {
-            setText(R.string.app_name); setTextColor(ink); textSize = 22f; letterSpacing = 0.35f; typeface = Typeface.DEFAULT_BOLD
-        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        top.addView(TextView(this).apply {
-            text = "⚙"; textSize = 22f; setTextColor(muted); setPadding(dp(12), dp(6), dp(4), dp(6))
-            contentDescription = "Settings"; setOnClickListener { showSettings(false) }
-        })
-        root.addView(top)
-
-        orb = OrbView(this)
-        root.addView(orb, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(220)))
-        statusView = TextView(this).apply { gravity = Gravity.CENTER; setTextColor(muted); textSize = 13f; text = "Tap the mic and speak" }
-        root.addView(statusView)
-        setupChip = TextView(this).apply {
-            text = "✦ Phone control is off. Tap to turn it on"; setTextColor(cyan); textSize = 13f; gravity = Gravity.CENTER
-            setPadding(dp(14), dp(7), dp(14), dp(7)); background = round(Color.parseColor("#0F1E2A"), 16, Color.parseColor("#1E6E84"))
-            visibility = View.GONE; setOnClickListener { showControlHelp() }
-        }
-        root.addView(setupChip, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(8)
-        })
-
-        list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(8), 0, dp(8)) }
-        scroll = ScrollView(this).apply { addView(list); isFillViewport = true }
-        root.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-
-        val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        input = EditText(this).apply {
-            hint = "Type or speak…"; setHintTextColor(muted); setTextColor(ink); textSize = 16f
-            background = round(panel, 24, Color.parseColor("#22304A")); setPadding(dp(16), dp(12), dp(16), dp(12))
-            imeOptions = EditorInfo.IME_ACTION_SEND; inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-            setOnEditorActionListener { _, id, _ -> if (id == EditorInfo.IME_ACTION_SEND) { sendTyped(); true } else false }
-        }
-        bar.addView(input, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        bar.addView(TextView(this).apply {
-            text = "➤"; textSize = 20f; setTextColor(cyan); gravity = Gravity.CENTER; contentDescription = "Send"
-            setPadding(dp(14), dp(8), dp(10), dp(8)); setOnClickListener { sendTyped() }
-        })
-        mic = TextView(this).apply {
-            text = "🎤"; textSize = 22f; gravity = Gravity.CENTER; contentDescription = "Speak"
-            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(cyan, violet)).apply { shape = GradientDrawable.OVAL }
-            setOnClickListener { if (listening) stopListening() else startListening() }
-        }
-        bar.addView(mic, LinearLayout.LayoutParams(dp(56), dp(56)))
-        root.addView(bar)
-        return root
+    /** Reads the real state of permissions and services for the screens. */
+    private fun refresh() {
+        val control = NovaAccessibility.instance
+        state.paired = prefs.paired
+        state.micGranted = granted(Manifest.permission.RECORD_AUDIO)
+        state.contactsGranted = granted(Manifest.permission.READ_CONTACTS)
+        state.controlOn = control != null
+        state.foregroundApp = control?.currentApp().orEmpty()
+        state.batteryFree = getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
+        state.paused = prefs.automationPaused
+        state.bubble = prefs.bubble
+        state.busy = brain.busy
     }
-
-    private fun bubble(role: String, msg: String) {
-        val mine = role == "user"
-        val tv = TextView(this).apply {
-            text = msg; textSize = 15.5f; setTextColor(if (role == "note") muted else ink)
-            setPadding(dp(14), dp(10), dp(14), dp(10)); setTextIsSelectable(true)
-            background = when (role) {
-                "user" -> round(Color.parseColor("#123A4A"), 18, Color.parseColor("#1E6E84"))
-                "note" -> round(Color.TRANSPARENT, 12, Color.parseColor("#22304A"))
-                else -> round(panel, 18, Color.parseColor("#22304A"))
-            }
-            if (role == "note") textSize = 13f
-        }
-        val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            gravity = if (mine) Gravity.END else Gravity.START; topMargin = dp(6)
-            if (mine) leftMargin = dp(48) else rightMargin = dp(48)
-        }
-        list.addView(tv, lp)
-        scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
-    }
-
-    private fun updateChip() {
-        if (::setupChip.isInitialized) setupChip.visibility = if (prefs.paired && NovaAccessibility.instance == null) View.VISIBLE else View.GONE
-    }
-
-    /* ---------------- conversation ---------------- */
 
     private fun loadHistory() {
         brain.background {
             try {
                 val h = brain.api.history()
-                main.post { list.removeAllViews(); h.forEach { bubble(it.first, it.second) } }
+                main.post { state.messages.clear(); h.forEach { state.messages.add(ChatMsg(it.first, it.second)) } }
             } catch (e: Exception) {
-                main.post { bubble("note", e.message ?: "Could not load the conversation.") }
+                main.post { note(e.message ?: "Could not load the conversation.") }
             }
         }
     }
 
-    private fun sendTyped() {
-        val t = input.text.toString().trim()
-        if (t.isEmpty()) return
-        input.setText("")
-        send(t)
-    }
+    /* ---------------- Brain.Ui ---------------- */
 
-    private fun send(t: String) {
-        if (!prefs.paired) { showSettings(true); return }
-        if (brain.busy) { bubble("note", "One moment, I'm still working on the last thing."); return }
-        bubble("user", t)
-        brain.ask(t)
-    }
-
-    override fun mood(m: Mood) { orb.state = m }
-    override fun status(text: String) { statusView.text = text }
-    override fun reply(text: String) = bubble("assistant", text)
-    override fun note(text: String) = bubble("note", text)
-
-    override fun confirm(question: String, answer: (Boolean) -> Unit) {
-        AlertDialog.Builder(this, R.style.NovaDialog)
-            .setTitle("Confirm")
-            .setMessage(question)
-            .setPositiveButton("Yes") { _, _ -> answer(true) }
-            .setNegativeButton("No") { _, _ -> answer(false) }
-            .setCancelable(false)
-            .show()
-    }
-
+    override fun mood(m: Mood) { if (!state.listening) state.mood = m; state.busy = brain.busy }
+    override fun status(text: String) { state.status = text; state.busy = brain.busy }
+    override fun reply(text: String) { state.messages.add(ChatMsg("assistant", text)) }
+    override fun note(text: String) { state.messages.add(ChatMsg("note", text)) }
+    override fun confirm(question: String, answer: (Boolean) -> Unit) { state.approval = Approval(question, answer) }
     override fun permission(permission: String, answer: (Boolean) -> Unit) {
         permissionAnswer = answer
-        requestPermissions(arrayOf(permission), REQ_ACTION)
+        otherPermission.launch(permission)
     }
 
     /* ---------------- voice ---------------- */
 
     private fun startListening() {
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQ_MIC); return
-        }
+        if (!granted(Manifest.permission.RECORD_AUDIO)) { listenAfterGrant = true; micPermission.launch(Manifest.permission.RECORD_AUDIO); return }
         brain.hush()
-        listening = true; orb.state = Mood.LISTENING; mic.alpha = 0.6f; statusView.text = "Starting the mic…"
+        state.listening = true; state.mood = Mood.LISTENING; state.partial = ""; state.status = "Starting the mic…"
         ears.start(prefs.voiceLang)
     }
 
-    private fun stopListening() {
-        ears.stop()
-        micOff()
-        statusView.text = ""
-    }
-
     private fun micOff() {
-        listening = false; mic.alpha = 1f; input.setText("")
-        if (!brain.busy) orb.state = Mood.IDLE
+        state.listening = false; state.level = 0f; state.partial = ""
+        state.mood = if (brain.busy) Mood.THINKING else Mood.IDLE
     }
 
-    override fun onReady() { statusView.text = "Listening…" }
-    override fun onLevel(level: Float) { orb.level = level }
-    override fun onPartial(text: String) { input.setText(text) }
-    override fun onHeard(text: String) { micOff(); send(text) }
-    override fun onNothing() { micOff(); statusView.text = "Didn't catch that. Tap the mic again." }
+    override fun onReady() { state.status = "Listening…" }
+    override fun onLevel(level: Float) { state.level = level }
+    override fun onPartial(text: String) { state.partial = text }
+    override fun onHeard(text: String) { micOff(); state.status = ""; send(text) }
+    override fun onNothing() { micOff(); state.status = "Didn't catch that. Tap the mic again." }
 
     /** The phone's speech service refused: use the system voice dialog instead. */
     override fun onBroken(code: Int) {
-        micOff(); statusView.text = ""
+        micOff(); state.status = ""
         try {
-            startActivityForResult(Ears.dialogIntent(prefs.voiceLang, "Bolo…"), REQ_VOICE)
+            voiceDialog.launch(Ears.dialogIntent(prefs.voiceLang, "Bolo…"))
         } catch (e: ActivityNotFoundException) {
-            bubble("note", "Speech recognition is not available on this phone (error $code). Install or update the Google app, then try again.")
+            note("Speech recognition is not available on this phone (error $code). Install or update the Google app, then try again.")
         }
     }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != REQ_VOICE || resultCode != RESULT_OK) return
-        val said = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.trim().orEmpty()
-        if (said.isNotEmpty()) send(said)
+    /* ---------------- Controller ---------------- */
+
+    override fun send(text: String) {
+        if (!prefs.paired) { note("Pair this phone first (Settings)."); return }
+        if (brain.busy) { note("One moment, I'm still working on the last thing. Tap Stop to cancel it."); return }
+        state.messages.add(ChatMsg("user", text))
+        brain.ask(text)
+        state.busy = brain.busy
     }
 
-    override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, results: IntArray) {
-        super.onRequestPermissionsResult(code, perms, results)
-        val granted = results.isNotEmpty() && results[0] == PackageManager.PERMISSION_GRANTED
-        when (code) {
-            REQ_MIC -> if (granted) startListening() else bubble("note", "The microphone permission is needed to talk to me.")
-            REQ_ACTION -> { val a = permissionAnswer; permissionAnswer = null; a?.invoke(granted) }
-            REQ_OTHER -> bubble("note", if (granted) "Allowed. Ask me again." else "Not allowed.")
-        }
+    override fun toggleMic() {
+        if (state.listening) { ears.stop(); micOff(); state.status = "" } else startListening()
     }
 
-    /* ---------------- phone control setup ---------------- */
+    override fun hush() { brain.hush() }
 
-    private fun showControlHelp() {
-        val on = NovaAccessibility.instance != null
-        AlertDialog.Builder(this, R.style.NovaDialog)
-            .setTitle(if (on) "Phone control is on ✓" else "Turn on phone control")
-            .setMessage(
-                (if (on) "NOVA can read the screen, tap, type and scroll for you, and the floating bubble is available.\n\n" else "") +
-                    "Android calls this permission Accessibility. It lets NOVA see the screen and tap, type and scroll in other apps, and show the floating bubble.\n\n" +
-                    "1. Tap Open settings.\n" +
-                    "2. Find NOVA (sometimes under Downloaded apps or Installed services) and turn it on.\n" +
-                    "3. If Android says \"Restricted setting\": tap App info, then the ⋮ menu at the top right, then \"Allow restricted settings\", and try step 2 again.\n\n" +
-                    "NOVA only acts when you ask. Sending, paying, buying, deleting and posting always ask you first. It never types into password fields."
-            )
-            .setPositiveButton("Open settings") { _, _ -> openSettings(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
-            .setNeutralButton("App info") { _, _ -> openSettings(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }
-            .setNegativeButton("Later", null)
-            .show()
+    override fun emergencyStop() {
+        ears.stop(); micOff()
+        state.approval = null
+        brain.stop()
+        NovaAccessibility.instance?.stopTask()
+        state.busy = false
+        state.status = "Stopped"
     }
+
+    override fun setPaused(paused: Boolean) { prefs.automationPaused = paused; state.paused = paused }
+
+    override fun setBubble(on: Boolean) {
+        prefs.bubble = on; state.bubble = on
+        NovaAccessibility.instance?.refreshBubble()
+        if (on && NovaAccessibility.instance == null) note("The bubble appears once phone control is on (Control tab).")
+    }
+
+    override fun requestMic() { micPermission.launch(Manifest.permission.RECORD_AUDIO) }
+    override fun requestContacts() { otherPermission.launch(Manifest.permission.READ_CONTACTS) }
 
     private fun openSettings(i: Intent) {
         try { startActivity(i) } catch (e: ActivityNotFoundException) { startActivity(Intent(Settings.ACTION_SETTINGS)) }
     }
 
-    /** Some phones (Honor, Xiaomi, Oppo) stop background services to save battery; this asks to keep NOVA running. */
-    private fun askBattery() {
+    override fun openAccessibilitySettings() = openSettings(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+    override fun openAppInfo() = openSettings(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+
+    override fun turnOffControl() {
+        NovaAccessibility.instance?.turnOff()
+        main.postDelayed({ refresh() }, 600)
+    }
+
+    /** Some phones (Honor, Xiaomi, Oppo) close background services to save battery; this asks to keep JARVIS running. */
+    override fun askBattery() {
         try {
             startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
         } catch (e: Exception) {
@@ -323,89 +221,68 @@ class MainActivity : Activity(), Brain.Ui, Ears.Listener {
         }
     }
 
-    /* ---------------- settings ---------------- */
-
-    private fun showSettings(firstRun: Boolean) {
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0) }
-        fun label(s: String) = TextView(this).apply { text = s; setTextColor(muted); textSize = 12f; setPadding(0, dp(12), 0, dp(2)) }
-        fun action(s: String, onClick: () -> Unit) = TextView(this).apply {
-            text = s; setTextColor(cyan); textSize = 15f; setPadding(0, dp(10), 0, dp(10)); setOnClickListener { onClick() }
-        }
-        val server = EditText(this).apply { setText(prefs.server); setSingleLine(); textSize = 14f }
-        val code = EditText(this).apply { hint = "Pairing code"; setSingleLine(); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS }
-        val name = EditText(this).apply { setText(Build.MODEL); setSingleLine() }
-        val langs = RadioGroup(this).apply { orientation = RadioGroup.HORIZONTAL }
-        val bn = RadioButton(this).apply { text = "বাংলা"; id = View.generateViewId() }
-        val en = RadioButton(this).apply { text = "English"; id = View.generateViewId() }
-        langs.addView(bn); langs.addView(en); langs.check(if (prefs.voiceLang == "en-US") en.id else bn.id)
-        val speakBox = CheckBox(this).apply { text = "Speak replies aloud"; isChecked = prefs.speakReplies }
-        val bubbleBox = CheckBox(this).apply { text = "Floating NOVA bubble over other apps"; isChecked = prefs.bubble }
-        box.addView(label("Server")); box.addView(server)
-        if (!prefs.paired || firstRun) { box.addView(label("Pairing code (from the setup message)")); box.addView(code); box.addView(label("This phone's name")); box.addView(name) }
-        else box.addView(label("Paired ✓"))
-        box.addView(label("Voice language")); box.addView(langs); box.addView(speakBox)
-        box.addView(label("Phone control"))
-        box.addView(action(if (NovaAccessibility.instance != null) "✓ Phone control is on" else "Turn on phone control →") { showControlHelp() })
-        box.addView(bubbleBox)
-        box.addView(action("Keep NOVA running in the background →") { askBattery() })
-
-        val d = AlertDialog.Builder(this, R.style.NovaDialog)
-            .setTitle(if (firstRun) "Connect ${getString(R.string.app_name)}" else "Settings")
-            .setView(ScrollView(this).apply { addView(box) })
-            .setPositiveButton(if (!prefs.paired || firstRun) "Pair" else "Save", null)
-            .setCancelable(!firstRun)
-        if (prefs.paired && !firstRun) {
-            d.setNeutralButton("Memory & chat") { _, _ -> showMemory() }
-            d.setNegativeButton("Close", null)
-        }
-        val dlg = d.create()
-        dlg.setOnShowListener {
-            dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                prefs.server = server.text.toString().trim().ifEmpty { BuildConfig.DEFAULT_SERVER }
-                prefs.voiceLang = if (langs.checkedRadioButtonId == en.id) "en-US" else "bn-BD"
-                prefs.speakReplies = speakBox.isChecked
-                prefs.bubble = bubbleBox.isChecked
-                NovaAccessibility.instance?.refreshBubble()
-                if (prefs.paired && !firstRun) { dlg.dismiss(); return@setOnClickListener }
-                val c = code.text.toString().trim()
-                if (c.isEmpty()) { code.error = "Enter the pairing code"; return@setOnClickListener }
-                brain.background {
-                    try {
-                        val tok = brain.api.pair(c, name.text.toString().trim().ifEmpty { "Phone" })
-                        prefs.token = tok
-                        main.post {
-                            dlg.dismiss(); updateChip()
-                            bubble("note", "Connected. Try: \"torch jalao\", \"open YouTube\", \"set an alarm for 7\".")
-                            loadHistory()
-                        }
-                    } catch (e: Exception) {
-                        main.post { code.error = e.message }
-                    }
-                }
+    override fun checkAi() {
+        state.aiOnline = null
+        brain.background {
+            val r = runCatching { brain.api.health() }
+            main.post {
+                state.aiOnline = r.isSuccess
+                state.aiInfo = r.getOrNull() ?: (r.exceptionOrNull()?.message ?: "")
             }
         }
-        dlg.show()
     }
 
-    private fun showMemory() {
+    override fun pair(code: String, name: String, done: (error: String?) -> Unit) {
         brain.background {
-            val mem = try { brain.api.memories() } catch (e: Exception) { emptyList() }
-            main.post {
-                val items = mem.map { it.second }.toTypedArray()
-                AlertDialog.Builder(this, R.style.NovaDialog)
-                    .setTitle(if (items.isEmpty()) "Nothing remembered yet" else "What I remember (tap to delete)")
-                    .setItems(items) { _, i ->
-                        val (id, t) = mem[i]
-                        AlertDialog.Builder(this, R.style.NovaDialog).setMessage("Forget \"$t\"?")
-                            .setPositiveButton("Forget") { _, _ -> brain.background { runCatching { brain.api.deleteMemory(id) }; main.post { showMemory() } } }
-                            .setNegativeButton("Keep", null).show()
-                    }
-                    .setPositiveButton("Close", null)
-                    .setNegativeButton("Clear chat") { _, _ ->
-                        brain.background { runCatching { brain.api.clearHistory() }; main.post { list.removeAllViews(); bubble("note", "Chat cleared. Memories are kept.") } }
-                    }
-                    .show()
+            try {
+                val tok = brain.api.pair(code, name)
+                prefs.token = tok
+                main.post { state.paired = true; done(null); loadHistory(); checkAi() }
+            } catch (e: Exception) {
+                main.post { done(e.message ?: "Pairing failed.") }
             }
         }
+    }
+
+    override fun unpair(done: () -> Unit) {
+        brain.background {
+            runCatching { brain.api.unpair() }
+            prefs.token = ""
+            main.post { state.paired = false; state.messages.clear(); done() }
+        }
+    }
+
+    override fun testVoice() {
+        brain.say(if (prefs.voiceLang == "en-US") "Hello, I am JARVIS. How can I help?" else "আমি জার্ভিস। বলো, কী করতে হবে?")
+    }
+
+    override fun loadMemories(done: (List<Pair<Int, String>>) -> Unit) {
+        brain.background {
+            val m = runCatching { brain.api.memories() }.getOrDefault(emptyList())
+            main.post { done(m) }
+        }
+    }
+
+    override fun deleteMemory(id: Int, done: () -> Unit) {
+        brain.background { runCatching { brain.api.deleteMemory(id) }; main.post { done() } }
+    }
+
+    override fun clearChat() {
+        brain.background {
+            val r = runCatching { brain.api.clearHistory() }
+            main.post { if (r.isSuccess) { state.messages.clear(); note("Chat cleared. Memories are kept.") } else note("Could not clear the chat: no connection.") }
+        }
+    }
+
+    override fun deleteTask(id: String) {
+        lifecycleScope.launch(Dispatchers.IO) { db.tasks().deleteSteps(id); db.tasks().deleteTask(id) }
+    }
+
+    override fun clearTasks() {
+        lifecycleScope.launch(Dispatchers.IO) { db.tasks().clearSteps(); db.tasks().clearTasks() }
+    }
+
+    override fun clearActions() {
+        lifecycleScope.launch(Dispatchers.IO) { db.actions().clear() }
     }
 }
