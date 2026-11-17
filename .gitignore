@@ -1,15 +1,16 @@
 # Secrets
 .env
 .env.*
-!.env.example
-
-# Dependencies
-node_modules/
+.dev.vars
 
 # Build output
-dist/
-*.log
+node_modules/
+.wrangler/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.apk
 
 # OS
 .DS_Store
-*.swp

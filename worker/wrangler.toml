@@ -1,0 +1,17 @@
+name = "nova-assistant"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+workers_dev = true
+
+# Conversation, long-term memory and paired devices.
+[[d1_databases]]
+binding = "DB"
+database_name = "nova-db"
+database_id = "e66a81b6-f443-43bc-bf9a-6ddb05cbe04c"
+
+# Cloudflare Workers AI: the assistant's model (free daily allowance, no API key needed).
+[ai]
+binding = "AI"
+
+# Secrets (set with `npx wrangler secret put NAME`, never in this file):
+#   PAIR_CODE  the code a phone needs once to pair with this server
