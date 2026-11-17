@@ -50,6 +50,11 @@ class CoreState {
     var conversation by mutableStateOf(true)
     var voiceInfo by mutableStateOf("")
     var banglaMissing by mutableStateOf(false)
+
+    // on/off
+    var awake by mutableStateOf(true)
+    var hideInGames by mutableStateOf(true)
+    var tileMessage by mutableStateOf("")
 }
 
 /** What the screens can ask the app to do. Implemented by MainActivity. */
@@ -77,6 +82,9 @@ interface Controller {
     fun setWakeWord(on: Boolean)
     fun setConversation(on: Boolean)
     fun installVoice()
+    fun setAwake(on: Boolean)
+    fun setHideInGames(on: Boolean)
+    fun addTile()
     fun loadMemories(done: (List<Pair<Int, String>>) -> Unit)
     fun deleteMemory(id: Int, done: () -> Unit)
     fun clearChat()

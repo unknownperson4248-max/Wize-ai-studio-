@@ -19,6 +19,13 @@ object Safety {
         "com.miui.securitycenter", "com.coloros.safecenter", "com.samsung.android.lool",
     )
 
+    /** Popular games that do not mark themselves as games in Android. */
+    val KNOWN_GAMES = setOf(
+        "com.tencent.ig", "com.pubg.imobile", "com.pubg.krmobile", "com.vng.pubgmobile", "com.tencent.tmgp.pubgmhd",
+        "com.dts.freefireth", "com.dts.freefiremax", "com.activision.callofduty.shooter", "com.mobile.legends",
+        "com.supercell.clashofclans", "com.supercell.clashroyale", "com.miniclip.eightballpool", "com.kiloo.subwaysurf",
+    )
+
     /** A tap on this label sends, pays, buys, deletes or posts something: the user must say Yes first. */
     fun isRiskyTap(target: String) = RISKY.containsMatchIn(target)
 

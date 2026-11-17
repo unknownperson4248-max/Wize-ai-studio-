@@ -96,7 +96,7 @@ class MainActivity : ComponentActivity(), Controller, Brain.Ui, Ears.Listener {
         super.onResume()
         main.post(ticker)
         // Android may have stopped "Hey Jarvis"; a microphone service can only be started while JARVIS is on screen
-        if (prefs.wakeWord && !WakeService.running && WakeModel.ready(this) && granted(Manifest.permission.RECORD_AUDIO)) startWake()
+        if (prefs.wakeWord && !prefs.sleeping && !WakeService.running && WakeModel.ready(this) && granted(Manifest.permission.RECORD_AUDIO)) startWake()
     }
     override fun onPause() { main.removeCallbacks(ticker); super.onPause() }
 
@@ -130,6 +130,8 @@ class MainActivity : ComponentActivity(), Controller, Brain.Ui, Ears.Listener {
         state.conversation = prefs.conversation
         state.voiceInfo = brain.voiceInfo
         state.banglaMissing = brain.banglaVoiceMissing
+        state.awake = !prefs.sleeping
+        state.hideInGames = prefs.hideInGames
     }
 
     private fun loadHistory() {
@@ -289,6 +291,7 @@ class MainActivity : ComponentActivity(), Controller, Brain.Ui, Ears.Listener {
     /** Hands-free "Hey Jarvis": needs the microphone, the offline model (downloaded once) and, on Android 13+, the notification. */
     override fun setWakeWord(on: Boolean) {
         prefs.wakeWord = on
+        if (on && prefs.sleeping) { Power.set(this, true); state.awake = true }
         if (!on) { WakeService.stop(this); state.wakeOn = false; state.wakeMessage = ""; return }
         if (!granted(Manifest.permission.RECORD_AUDIO)) { micPermission.launch(Manifest.permission.RECORD_AUDIO); state.wakeMessage = "Allow the microphone, then switch it on again."; prefs.wakeWord = false; return }
         if (!WakeModel.ready(this)) {
@@ -312,6 +315,34 @@ class MainActivity : ComponentActivity(), Controller, Brain.Ui, Ears.Listener {
         try { WakeService.start(this) } catch (e: Exception) { state.wakeMessage = "Android did not allow it: ${e.message}"; return }
         state.wakeMessage = "Say \"Hey Jarvis\" any time. A notification shows while it listens."
         main.postDelayed({ refresh() }, 800)
+    }
+
+    /** JARVIS on/off: off hides the bubble, stops "Hey Jarvis" and any running task. */
+    override fun setAwake(on: Boolean) {
+        if (!on) { ears.stop(); micOff(); brain.stop(); state.busy = false }
+        Power.set(this, on)
+        state.awake = on
+        if (on && prefs.wakeWord && WakeModel.ready(this) && granted(Manifest.permission.RECORD_AUDIO)) startWake()
+        main.postDelayed({ refresh() }, 600)
+    }
+
+    override fun setHideInGames(on: Boolean) {
+        prefs.hideInGames = on; state.hideInGames = on
+        NovaAccessibility.instance?.refreshBubble()
+    }
+
+    /** Adds the JARVIS on/off button to Quick Settings (Android 13+ asks directly; older phones: edit the panel). */
+    override fun addTile() {
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            try {
+                getSystemService(android.app.StatusBarManager::class.java).requestAddTileService(
+                    android.content.ComponentName(this, JarvisTile::class.java), "JARVIS",
+                    android.graphics.drawable.Icon.createWithResource(this, R.drawable.ic_launcher_fg), mainExecutor,
+                ) { code -> main.post { state.tileMessage = if (code == android.app.StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_NOT_ADDED) "Not added." else "The JARVIS button is in Quick Settings." } }
+                return
+            } catch (_: Exception) {}
+        }
+        state.tileMessage = "Swipe down twice from the top, tap the pencil (edit), and drag the JARVIS button into your panel."
     }
 
     override fun setConversation(on: Boolean) { prefs.conversation = on; state.conversation = on }

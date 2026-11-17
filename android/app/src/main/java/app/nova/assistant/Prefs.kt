@@ -66,5 +66,15 @@ class Prefs(context: Context) {
         get() = p.getBoolean("banglaVoice", true)
         set(v) = p.edit().putBoolean("banglaVoice", v).apply()
 
+    /** JARVIS switched off by the user (Quick Settings tile, drag to ✕, or the app). */
+    var sleeping: Boolean
+        get() = p.getBoolean("sleeping", false)
+        set(v) = p.edit().putBoolean("sleeping", v).apply()
+
+    /** Hide the bubble and free the microphone while a game is open. */
+    var hideInGames: Boolean
+        get() = p.getBoolean("hideInGames", true)
+        set(v) = p.edit().putBoolean("hideInGames", v).apply()
+
     val paired get() = token.length == 64
 }

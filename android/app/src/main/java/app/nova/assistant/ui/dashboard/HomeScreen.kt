@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -33,6 +34,7 @@ import app.nova.assistant.ui.Pill
 import app.nova.assistant.ui.PrimaryButton
 import app.nova.assistant.ui.SectionTitle
 import app.nova.assistant.ui.Visualizer
+import app.nova.assistant.ui.control.jSwitchColors
 import app.nova.assistant.ui.startOfToday
 import app.nova.assistant.ui.statusColor
 import app.nova.assistant.ui.statusLabel
@@ -51,7 +53,7 @@ fun HomeScreen(c: Controller, go: (String) -> Unit) {
     fun n(st: TaskStatus) = counts.firstOrNull { it.status == st.name }?.n ?: 0
 
     val (overall, overallColor) = when {
-        s.paused -> "Automation paused" to J.Amber
+        s.paused -> "Paused" to J.Amber
         s.aiOnline == false -> "Offline" to J.Red
         s.busy -> "Working" to J.Blue
         s.aiOnline == null -> "Connecting" to J.SilverDim
@@ -64,7 +66,10 @@ fun HomeScreen(c: Controller, go: (String) -> Unit) {
                 Text("JARVIS", style = MaterialTheme.typography.headlineMedium, color = J.Text)
                 Text("Personal & business assistant", color = J.SilverDim, fontSize = 13.sp)
             }
-            Pill(overall, overallColor)
+            Column(horizontalAlignment = Alignment.End) {
+                Pill(if (s.awake) overall else "Off", if (s.awake) overallColor else J.SilverDim)
+                Switch(checked = s.awake, onCheckedChange = { c.setAwake(it) }, colors = jSwitchColors())
+            }
         }
         Spacer(Modifier.height(14.dp))
         Panel(Modifier.fillMaxWidth(), onClick = { go("core") }) {

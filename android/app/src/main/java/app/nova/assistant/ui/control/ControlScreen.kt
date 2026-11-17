@@ -75,6 +75,17 @@ fun ControlScreen(c: Controller) {
             }
             Spacer(Modifier.height(10.dp))
             Panel(Modifier.fillMaxWidth()) {
+                SettingRow("JARVIS on", "Off hides the bubble, stops \"Hey Jarvis\" and frees the mic. You can also drag the bubble onto the ✕, or use the Quick Settings button.") {
+                    Switch(checked = s.awake, onCheckedChange = { c.setAwake(it) }, colors = jSwitchColors())
+                }
+                SettingRow("Hide in games", "While a game is open, the bubble hides and the mic is left to the game. It comes back when you leave the game.") {
+                    Switch(checked = s.hideInGames, onCheckedChange = { c.setHideInGames(it) }, colors = jSwitchColors())
+                }
+                TextButton(onClick = { c.addTile() }) { Text("Add the JARVIS on/off button to Quick Settings →", color = J.Blue) }
+                if (s.tileMessage.isNotEmpty()) Text(s.tileMessage, color = J.SilverDim, fontSize = 12.sp)
+            }
+            Spacer(Modifier.height(10.dp))
+            Panel(Modifier.fillMaxWidth()) {
                 SettingRow("Pause automation", "While paused, no app, tap, type, call or message action runs.") {
                     Switch(checked = s.paused, onCheckedChange = { c.setPaused(it) }, colors = jSwitchColors())
                 }

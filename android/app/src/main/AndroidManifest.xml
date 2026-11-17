@@ -69,6 +69,21 @@
             android:exported="false"
             android:foregroundServiceType="microphone" />
 
+        <!-- Quick Settings button: one tap turns JARVIS on or off (handy before a game). -->
+        <service
+            android:name=".JarvisTile"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher_fg"
+            android:label="JARVIS"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="true" />
+        </service>
+
         <!-- Phone control + floating bubble. The user turns it on in Android's Accessibility settings. -->
         <service
             android:name=".NovaAccessibility"

@@ -66,11 +66,43 @@ class NovaAccessibility : AccessibilityService(), Brain.Ui {
         refreshBubble()
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    /* ---------------- game mode ---------------- */
+
+    /** True while a game is on screen: the bubble hides and the microphone is left to the game. */
+    @Volatile var inGame = false
+        private set
+    private val gameCache = HashMap<String, Boolean?>()   // null = not a normal app (keyboard, system panel): ignore
+
+    private fun kindOf(pkg: String): Boolean? = gameCache.getOrPut(pkg) {
+        try {
+            if (packageManager.getLaunchIntentForPackage(pkg) == null) return@getOrPut null
+            val info = packageManager.getApplicationInfo(pkg, 0)
+            info.category == android.content.pm.ApplicationInfo.CATEGORY_GAME ||
+                (info.flags and android.content.pm.ApplicationInfo.FLAG_IS_GAME) != 0 ||
+                pkg in Safety.KNOWN_GAMES
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        val pkg = event.packageName?.toString() ?: return
+        if (pkg == packageName) return
+        val game = kindOf(pkg) ?: return
+        if (game == inGame) return
+        inGame = game
+        if (game) {
+            MicLock.acquire("game")          // "Hey Jarvis" lets go of the mic for the game's voice chat
+            brain?.hush()
+        } else MicLock.release("game")
+        refreshBubble()
+    }
     override fun onInterrupt() {}
 
     override fun onUnbind(intent: Intent?): Boolean {
         instance = null
+        if (inGame) { inGame = false; MicLock.release("game") }
         main.post { removeAll() }
         return super.onUnbind(intent)
     }
@@ -104,7 +136,7 @@ class NovaAccessibility : AccessibilityService(), Brain.Ui {
 
     /** Conversation mode: open the listening card again for the follow-up. */
     override fun listenAgain() {
-        if (prefs.conversation) listen()
+        if (prefs.conversation && !prefs.sleeping && !inGame) listen()
     }
 
     /** Refuses screen actions in system settings, permission screens and JARVIS itself (see [Safety.isProtectedApp]). */
@@ -131,14 +163,17 @@ class NovaAccessibility : AccessibilityService(), Brain.Ui {
 
     /** Shows or hides the bubble to match the setting. */
     fun refreshBubble() {
-        main.post { if (prefs.bubble) showBubble() else removeAll() }
+        main.post {
+            val show = prefs.bubble && !prefs.sleeping && !(inGame && prefs.hideInGames)
+            if (show) showBubble() else removeAll()
+        }
     }
 
     @SuppressLint("ClickableViewAccessibility")
     private fun showBubble() {
         if (face != null) return
         val size = faceSize
-        val v = AvatarView(this).apply { disc = true; alpha = 0.9f; contentDescription = "NOVA. Tap to talk, hold to open the app." }
+        val v = AvatarView(this).apply { disc = true; alpha = 0.9f; contentDescription = "JARVIS. Tap to talk, hold to open the app, drag to the cross to turn off." }
         val lp = params(size, size, true).apply {
             x = if (prefs.bubbleX >= 0) prefs.bubbleX.coerceAtMost(screenW - size) else screenW - size - dp(6)
             y = if (prefs.bubbleY >= 0) prefs.bubbleY.coerceAtMost(screenH - size) else screenH / 3
@@ -165,11 +200,15 @@ class NovaAccessibility : AccessibilityService(), Brain.Ui {
                         lp.x = (startX + dx).toInt()
                         lp.y = (startY + dy).toInt().coerceIn(0, screenH - size)
                         safeUpdate(v, lp); placeBalloon()
+                        showDismiss(overDismiss(e.rawX, e.rawY))
                     }
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     v.animate().scaleX(1f).scaleY(1f).setDuration(120).start()
-                    if (dragging) snap(v, lp)
+                    val drop = dragging && overDismiss(e.rawX, e.rawY)
+                    hideDismiss()
+                    if (drop) Power.set(this, false, toast = true)
+                    else if (dragging) snap(v, lp)
                     else if (e.actionMasked == MotionEvent.ACTION_UP) {
                         if (SystemClock.uptimeMillis() - downAt > 550) openApp() else listen()
                     }
@@ -193,6 +232,33 @@ class NovaAccessibility : AccessibilityService(), Brain.Ui {
         }
         prefs.bubbleX = target
         prefs.bubbleY = lp.y
+    }
+
+    /* drag-to-✕: a round target near the bottom while the bubble is dragged */
+    private var dismiss: TextView? = null
+
+    private fun overDismiss(x: Float, y: Float): Boolean {
+        val cx = screenW / 2f
+        val cy = screenH - dp(110).toFloat()
+        val r = dp(70).toFloat()
+        return (x - cx) * (x - cx) + (y - cy) * (y - cy) < r * r
+    }
+
+    private fun showDismiss(hot: Boolean) {
+        val d = dismiss ?: TextView(this).apply {
+            text = "✕"; textSize = 22f; gravity = Gravity.CENTER; setTextColor(Color.WHITE)
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.parseColor("#CC1A1F2B")); setStroke(dp(2), Color.parseColor("#88FFFFFF")) }
+        }.also { t ->
+            val lp = params(dp(64), dp(64), false).apply { gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL; y = dp(78) }
+            try { wm.addView(t, lp); dismiss = t } catch (_: Exception) { return }
+        }
+        d.animate().scaleX(if (hot) 1.25f else 1f).scaleY(if (hot) 1.25f else 1f).setDuration(100).start()
+        (d.background as? GradientDrawable)?.setColor(Color.parseColor(if (hot) "#E6FF4D5E" else "#CC1A1F2B"))
+    }
+
+    private fun hideDismiss() {
+        dismiss?.let { try { wm.removeView(it) } catch (_: Exception) {} }
+        dismiss = null
     }
 
     private fun safeUpdate(v: View, lp: WindowManager.LayoutParams) {
@@ -262,6 +328,7 @@ class NovaAccessibility : AccessibilityService(), Brain.Ui {
     }
 
     private fun removeAll() {
+        hideDismiss()
         removeBalloon()
         removeConfirm()
         face?.let { try { wm.removeView(it) } catch (_: Exception) {} }
