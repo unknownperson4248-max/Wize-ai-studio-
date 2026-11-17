@@ -42,6 +42,14 @@ class CoreState {
     var foregroundApp by mutableStateOf("")
     var aiOnline by mutableStateOf<Boolean?>(null)   // null = checking
     var aiInfo by mutableStateOf("")
+
+    // hands-free and voice
+    var wakeOn by mutableStateOf(false)
+    var wakeProgress by mutableStateOf<Float?>(null)   // model download, 0..1, null when not downloading
+    var wakeMessage by mutableStateOf("")
+    var conversation by mutableStateOf(true)
+    var voiceInfo by mutableStateOf("")
+    var banglaMissing by mutableStateOf(false)
 }
 
 /** What the screens can ask the app to do. Implemented by MainActivity. */
@@ -66,6 +74,9 @@ interface Controller {
     fun pair(code: String, name: String, done: (error: String?) -> Unit)
     fun unpair(done: () -> Unit)
     fun testVoice()
+    fun setWakeWord(on: Boolean)
+    fun setConversation(on: Boolean)
+    fun installVoice()
     fun loadMemories(done: (List<Pair<Int, String>>) -> Unit)
     fun deleteMemory(id: Int, done: () -> Unit)
     fun clearChat()

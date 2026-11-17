@@ -96,10 +96,23 @@ class NovaAccessibility : AccessibilityService(), Brain.Ui {
     fun currentApp(): String = rootInActiveWindow?.packageName?.toString()?.let { appLabel(it) }.orEmpty()
 
     /** Something the user said through the bubble. */
-    fun ask(text: String) {
+    fun ask(text: String, spoken: Boolean = true) {
         val b = brain ?: return
         if (b.busy) { showBalloon("One moment, I'm still working on the last thing.", true, 3000); return }
-        b.ask(text)
+        b.ask(text, spoken)
+    }
+
+    /** Conversation mode: open the listening card again for the follow-up. */
+    override fun listenAgain() {
+        if (prefs.conversation) listen()
+    }
+
+    /** Refuses screen actions in system settings, permission screens and JARVIS itself (see [Safety.isProtectedApp]). */
+    private fun guard(root: AccessibilityNodeInfo): String? {
+        val pkg = root.packageName?.toString().orEmpty()
+        return if (Safety.isProtectedApp(pkg, packageName))
+            "Failed: for safety I do not tap, type or scroll in ${appLabel(pkg)}. Ask the user to do it themselves."
+        else null
     }
 
     /* ---------------- floating bubble ---------------- */
@@ -403,6 +416,7 @@ class NovaAccessibility : AccessibilityService(), Brain.Ui {
     fun tap(target: String): String {
         if (target.isBlank()) return "Failed: nothing to tap."
         val root = rootInActiveWindow ?: return "Failed: cannot see the screen right now."
+        guard(root)?.let { return it }
         val node = find(root, target) ?: return "Failed: \"$target\" is not on the screen. Read the screen again or scroll."
         val ok = click(node)
         Thread.sleep(1000)
@@ -411,6 +425,7 @@ class NovaAccessibility : AccessibilityService(), Brain.Ui {
 
     fun type(text: String, field: String): String {
         val root = rootInActiveWindow ?: return "Failed: cannot see the screen right now."
+        guard(root)?.let { return it }
         val fields = mutableListOf<AccessibilityNodeInfo>()
         fun walk(n: AccessibilityNodeInfo?, depth: Int) {
             if (n == null || depth > 45) return
@@ -433,6 +448,7 @@ class NovaAccessibility : AccessibilityService(), Brain.Ui {
 
     fun scroll(direction: String): String {
         val root = rootInActiveWindow ?: return "Failed: cannot see the screen right now."
+        guard(root)?.let { return it }
         var best: AccessibilityNodeInfo? = null
         var area = 0
         val r = Rect()

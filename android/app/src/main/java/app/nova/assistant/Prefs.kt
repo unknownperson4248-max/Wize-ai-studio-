@@ -51,5 +51,20 @@ class Prefs(context: Context) {
         get() = p.getFloat("voiceVolume", 1.0f)
         set(v) = p.edit().putFloat("voiceVolume", v).apply()
 
+    /** "Hey Jarvis" hands-free listening (offline wake word). */
+    var wakeWord: Boolean
+        get() = p.getBoolean("wakeWord", false)
+        set(v) = p.edit().putBoolean("wakeWord", v).apply()
+
+    /** After JARVIS answers a spoken question, listen again for the follow-up without a tap. */
+    var conversation: Boolean
+        get() = p.getBoolean("conversation", true)
+        set(v) = p.edit().putBoolean("conversation", v).apply()
+
+    /** Whether the phone's voice can speak Bangla script; if not, Bangla replies are written in English letters. */
+    var banglaVoice: Boolean
+        get() = p.getBoolean("banglaVoice", true)
+        set(v) = p.edit().putBoolean("banglaVoice", v).apply()
+
     val paired get() = token.length == 64
 }

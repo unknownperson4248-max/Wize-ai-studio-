@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -65,8 +66,25 @@ fun SettingsScreen(c: Controller, go: (String) -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
         Text("Settings", style = MaterialTheme.typography.headlineMedium, color = J.Text, modifier = Modifier.padding(top = 14.dp))
 
+        SectionTitle("Hands-free")
+        Panel(Modifier.fillMaxWidth()) {
+            val s = c.state
+            SettingRow("\"Hey Jarvis\"", "Say \"Hey Jarvis\" instead of tapping. Listens offline on this phone; a notification shows while it is on. Uses some battery.") {
+                Switch(checked = s.wakeOn || (s.wakeProgress != null), onCheckedChange = { c.setWakeWord(it) }, enabled = s.wakeProgress == null, colors = jSwitchColors())
+            }
+            s.wakeProgress?.let { pr ->
+                LinearProgressIndicator(progress = { pr }, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp), color = J.Blue, trackColor = J.Line)
+            }
+            if (s.wakeMessage.isNotEmpty()) Text(s.wakeMessage, color = J.SilverDim, fontSize = 12.sp)
+            SettingRow("Keep the conversation going", "After JARVIS answers out loud, it listens for your reply. Stays quiet if you say nothing.") {
+                Switch(checked = s.conversation, onCheckedChange = { c.setConversation(it) }, colors = jSwitchColors())
+            }
+        }
+
         SectionTitle("Voice")
         Panel(Modifier.fillMaxWidth()) {
+            Text(c.state.voiceInfo.ifEmpty { "Voice engine starting…" }, color = if (c.state.banglaMissing) J.Amber else J.SilverDim, fontSize = 12.sp)
+            if (c.state.banglaMissing) TextButton(onClick = { c.installVoice() }) { Text("Install the Bangla voice →", color = J.Blue) }
             Text("Recognition language", color = J.Text, fontSize = 15.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
                 listOf("bn-BD" to "বাংলা", "en-US" to "English").forEach { (code, label) ->

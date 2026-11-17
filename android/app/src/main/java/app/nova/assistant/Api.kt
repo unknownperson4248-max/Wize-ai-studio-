@@ -56,12 +56,14 @@ class Api(private val prefs: Prefs) {
         return Reply(r.optString("reply", ""), list)
     }
 
+    private fun context(o: JSONObject) = o.put("tz", TimeZone.getDefault().id).put("bn_voice", prefs.banglaVoice)
+
     fun say(text: String): Reply =
-        toReply(request("POST", "/api/chat", JSONObject().put("text", text).put("tz", TimeZone.getDefault().id)))
+        toReply(request("POST", "/api/chat", context(JSONObject().put("text", text))))
 
     fun sendResult(action: Action, result: String): Reply {
         val item = JSONObject().put("name", action.name).put("args", action.args).put("result", result)
-        return toReply(request("POST", "/api/chat", JSONObject().put("tool_results", JSONArray().put(item)).put("tz", TimeZone.getDefault().id)))
+        return toReply(request("POST", "/api/chat", context(JSONObject().put("tool_results", JSONArray().put(item)))))
     }
 
     /** Recent conversation as (role, text) pairs, oldest first. */

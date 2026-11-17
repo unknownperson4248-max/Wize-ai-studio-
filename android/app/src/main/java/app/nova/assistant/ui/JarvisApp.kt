@@ -1,10 +1,26 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package app.nova.assistant.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Face
@@ -13,16 +29,18 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -63,8 +81,8 @@ fun JarvisApp(c: Controller) {
     LaunchedEffect(s.goTo) { s.goTo?.let { route -> s.goTo = null; go(nav, route) } }
 
     Box(Modifier.fillMaxSize().background(J.Bg)) {
-        Scaffold(containerColor = J.Bg, bottomBar = { BottomBar(nav) }) { pad ->
-            NavHost(nav, startDestination = "home", modifier = Modifier.padding(pad)) {
+        Scaffold(containerColor = J.Bg, bottomBar = { if (!WindowInsets.isImeVisible) BottomBar(nav) }) { pad ->
+            NavHost(nav, startDestination = "home", modifier = Modifier.padding(pad).consumeWindowInsets(pad).imePadding()) {
                 composable("home") { HomeScreen(c) { go(nav, it) } }
                 composable("core") { CoreScreen(c) }
                 composable("tasks") { TasksScreen(c) { id -> nav.navigate("task/$id") } }
@@ -115,22 +133,35 @@ private fun go(nav: NavHostController, route: String) {
     }
 }
 
+/** Floating glass tab bar that sits above the gesture bar (or the buttons), whatever navigation the phone uses. */
 @Composable
 private fun BottomBar(nav: NavHostController) {
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
-    NavigationBar(containerColor = J.Panel, tonalElevation = 0.dp) {
-        TABS.forEach { t ->
-            NavigationBarItem(
-                selected = route == t.route || (t.route == "tasks" && route == "task/{id}") || (t.route == "settings" && route == "security"),
-                onClick = { go(nav, t.route) },
-                icon = { Icon(t.icon, contentDescription = t.label) },
-                label = { Text(t.label) },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = J.Blue, selectedTextColor = J.Blue, indicatorColor = J.BlueDeep,
-                    unselectedIconColor = J.SilverDim, unselectedTextColor = J.SilverDim,
-                ),
-            )
+    Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 14.dp, vertical = 8.dp)) {
+        Row(
+            Modifier.fillMaxWidth().height(64.dp).clip(RoundedCornerShape(32.dp))
+                .background(Brush.verticalGradient(listOf(J.Panel2.copy(alpha = 0.96f), J.Panel.copy(alpha = 0.96f))))
+                .border(1.dp, Brush.horizontalGradient(listOf(J.Line, J.Blue.copy(alpha = 0.45f), J.Line)), RoundedCornerShape(32.dp))
+                .padding(horizontal = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TABS.forEach { t ->
+                val selected = route == t.route || (t.route == "tasks" && route == "task/{id}") || (t.route == "settings" && route == "security")
+                Column(
+                    Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(26.dp))
+                        .clickable { go(nav, t.route) },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Box(
+                        Modifier.size(width = 44.dp, height = 28.dp).clip(RoundedCornerShape(14.dp))
+                            .background(if (selected) J.BlueDeep else Color.Transparent),
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(t.icon, contentDescription = t.label, tint = if (selected) J.Blue else J.SilverDim, modifier = Modifier.size(21.dp)) }
+                    Text(t.label, color = if (selected) J.Blue else J.SilverDim, fontSize = 10.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+                }
+            }
         }
     }
 }

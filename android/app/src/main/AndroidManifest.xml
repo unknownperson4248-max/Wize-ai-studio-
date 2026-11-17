@@ -6,6 +6,9 @@
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Android 11+: which other apps this app may see (to open apps by name and to use speech and voice services) -->
     <queries>
@@ -22,6 +25,7 @@
         <intent>
             <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
         </intent>
+        <package android:name="com.google.android.tts" />
         <package android:name="com.whatsapp" />
         <package android:name="com.whatsapp.w4b" />
     </queries>
@@ -58,6 +62,12 @@
             android:taskAffinity=""
             android:excludeFromRecents="true"
             android:launchMode="singleTask" />
+
+        <!-- "Hey Jarvis": offline wake-word listening while the user has it switched on (always with a notification). -->
+        <service
+            android:name=".wake.WakeService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
 
         <!-- Phone control + floating bubble. The user turns it on in Android's Accessibility settings. -->
         <service

@@ -66,6 +66,7 @@ fun CoreScreen(c: Controller) {
             Text("JARVIS", style = androidx.compose.material3.MaterialTheme.typography.headlineMedium, color = J.Text, modifier = Modifier.weight(1f))
             if (s.listening) Pill("MIC ON", J.Red)
             else if (s.paused) Pill("Automation paused", J.Amber)
+            else if (s.wakeOn) Pill("Say \"Hey Jarvis\"", J.Blue)
         }
         Visualizer(s.mood, s.level, Modifier.fillMaxWidth().height(230.dp).clickable { c.toggleMic() })
         val line = when {

@@ -14,6 +14,7 @@ android {
         targetSdk = 34
         versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
         versionName = "0.2." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         buildConfigField("String", "DEFAULT_SERVER", "\"https://nova-assistant.rahatwize.workers.dev\"")
     }
 
@@ -66,6 +67,10 @@ dependencies {
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     ksp("androidx.room:room-compiler:2.6.1")
+
+    // offline "Hey Jarvis" wake word (Vosk, Apache-2.0)
+    implementation("net.java.dev.jna:jna:5.18.1@aar")
+    implementation("com.alphacephei:vosk-android:0.3.75@aar")
 
     testImplementation("junit:junit:4.13.2")
 }

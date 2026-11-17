@@ -12,6 +12,8 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.speech.RecognizerIntent
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
@@ -22,6 +24,8 @@ import app.nova.assistant.ui.Controller
 import app.nova.assistant.ui.CoreState
 import app.nova.assistant.ui.JarvisApp
 import app.nova.assistant.ui.theme.JarvisTheme
+import app.nova.assistant.wake.WakeModel
+import app.nova.assistant.wake.WakeService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -59,10 +63,18 @@ class MainActivity : ComponentActivity(), Controller, Brain.Ui, Ears.Listener {
     }
     private val voiceDialog = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         val said = r.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.trim().orEmpty()
-        if (r.resultCode == RESULT_OK && said.isNotEmpty()) send(said)
+        MicLock.release("voice-dialog")
+        if (r.resultCode == RESULT_OK && said.isNotEmpty()) send(said, spoken = true)
     }
 
+    private val notifyPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { startWake() }
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        // draw behind the status bar and the gesture bar; the screens add the right padding themselves
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+        )
         super.onCreate(savedInstanceState)
         val assist = intent?.action == Intent.ACTION_ASSIST
         state.showIntro = savedInstanceState == null && !assist
@@ -80,7 +92,12 @@ class MainActivity : ComponentActivity(), Controller, Brain.Ui, Ears.Listener {
         if (intent.action == Intent.ACTION_ASSIST && prefs.paired) { state.goTo = "core"; startListening() } else handleExtras(intent)
     }
 
-    override fun onResume() { super.onResume(); main.post(ticker) }
+    override fun onResume() {
+        super.onResume()
+        main.post(ticker)
+        // Android may have stopped "Hey Jarvis"; a microphone service can only be started while JARVIS is on screen
+        if (prefs.wakeWord && !WakeService.running && WakeModel.ready(this) && granted(Manifest.permission.RECORD_AUDIO)) startWake()
+    }
     override fun onPause() { main.removeCallbacks(ticker); super.onPause() }
 
     override fun onDestroy() {
@@ -109,6 +126,10 @@ class MainActivity : ComponentActivity(), Controller, Brain.Ui, Ears.Listener {
         state.paused = prefs.automationPaused
         state.bubble = prefs.bubble
         state.busy = brain.busy
+        state.wakeOn = WakeService.running
+        state.conversation = prefs.conversation
+        state.voiceInfo = brain.voiceInfo
+        state.banglaMissing = brain.banglaVoiceMissing
     }
 
     private fun loadHistory() {
@@ -134,6 +155,11 @@ class MainActivity : ComponentActivity(), Controller, Brain.Ui, Ears.Listener {
         otherPermission.launch(permission)
     }
 
+    /** Conversation mode: JARVIS finished its spoken answer, so listen for the follow-up (only while this screen is open). */
+    override fun listenAgain() {
+        if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) && !state.listening) startListening()
+    }
+
     /* ---------------- voice ---------------- */
 
     private fun startListening() {
@@ -151,26 +177,30 @@ class MainActivity : ComponentActivity(), Controller, Brain.Ui, Ears.Listener {
     override fun onReady() { state.status = "Listening…" }
     override fun onLevel(level: Float) { state.level = level }
     override fun onPartial(text: String) { state.partial = text }
-    override fun onHeard(text: String) { micOff(); state.status = ""; send(text) }
+    override fun onHeard(text: String) { micOff(); state.status = ""; send(text, spoken = true) }
     override fun onNothing() { micOff(); state.status = "Didn't catch that. Tap the mic again." }
 
     /** The phone's speech service refused: use the system voice dialog instead. */
     override fun onBroken(code: Int) {
         micOff(); state.status = ""
         try {
+            MicLock.acquire("voice-dialog")
             voiceDialog.launch(Ears.dialogIntent(prefs.voiceLang, "Bolo…"))
         } catch (e: ActivityNotFoundException) {
+            MicLock.release("voice-dialog")
             note("Speech recognition is not available on this phone (error $code). Install or update the Google app, then try again.")
         }
     }
 
     /* ---------------- Controller ---------------- */
 
-    override fun send(text: String) {
+    override fun send(text: String) = send(text, spoken = false)
+
+    private fun send(text: String, spoken: Boolean) {
         if (!prefs.paired) { note("Pair this phone first (Settings)."); return }
         if (brain.busy) { note("One moment, I'm still working on the last thing. Tap Stop to cancel it."); return }
         state.messages.add(ChatMsg("user", text))
-        brain.ask(text)
+        brain.ask(text, spoken)
         state.busy = brain.busy
     }
 
@@ -254,6 +284,47 @@ class MainActivity : ComponentActivity(), Controller, Brain.Ui, Ears.Listener {
 
     override fun testVoice() {
         brain.say(if (prefs.voiceLang == "en-US") "Hello, I am JARVIS. How can I help?" else "আমি জার্ভিস। বলো, কী করতে হবে?")
+    }
+
+    /** Hands-free "Hey Jarvis": needs the microphone, the offline model (downloaded once) and, on Android 13+, the notification. */
+    override fun setWakeWord(on: Boolean) {
+        prefs.wakeWord = on
+        if (!on) { WakeService.stop(this); state.wakeOn = false; state.wakeMessage = ""; return }
+        if (!granted(Manifest.permission.RECORD_AUDIO)) { micPermission.launch(Manifest.permission.RECORD_AUDIO); state.wakeMessage = "Allow the microphone, then switch it on again."; prefs.wakeWord = false; return }
+        if (!WakeModel.ready(this)) {
+            state.wakeProgress = 0f; state.wakeMessage = "Downloading the offline \"Hey Jarvis\" model (about 40 MB)…"
+            Thread {
+                val r = runCatching { WakeModel.download(this) { p -> main.post { state.wakeProgress = p } } }
+                main.post {
+                    state.wakeProgress = null
+                    if (r.isSuccess) setWakeWord(true)
+                    else { prefs.wakeWord = false; state.wakeOn = false; state.wakeMessage = r.exceptionOrNull()?.message ?: "Download failed. Check the internet and try again." }
+                }
+            }.start()
+            return
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 33 && !granted(Manifest.permission.POST_NOTIFICATIONS)) { notifyPermission.launch(Manifest.permission.POST_NOTIFICATIONS); return }
+        startWake()
+    }
+
+    private fun startWake() {
+        if (!prefs.wakeWord) return
+        try { WakeService.start(this) } catch (e: Exception) { state.wakeMessage = "Android did not allow it: ${e.message}"; return }
+        state.wakeMessage = "Say \"Hey Jarvis\" any time. A notification shows while it listens."
+        main.postDelayed({ refresh() }, 800)
+    }
+
+    override fun setConversation(on: Boolean) { prefs.conversation = on; state.conversation = on }
+
+    /** Opens the voice install page: Google's voice data (for Bangla) if the engine is there, else the Play Store. */
+    override fun installVoice() {
+        val tries = listOf(
+            Intent(android.speech.tts.TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA).setPackage(Voice.GOOGLE_TTS),
+            Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + Voice.GOOGLE_TTS)),
+            Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=" + Voice.GOOGLE_TTS)),
+        )
+        val start = if (Voice.hasGoogleTts(this)) 0 else 1
+        for (i in tries.drop(start)) { try { startActivity(i); return } catch (_: Exception) {} }
     }
 
     override fun loadMemories(done: (List<Pair<Int, String>>) -> Unit) {

@@ -25,6 +25,8 @@ import android.widget.TextView
  */
 class ListenActivity : Activity(), Ears.Listener {
 
+    private companion object { const val LOCK = "listen-card" }
+
     private lateinit var prefs: Prefs
     private lateinit var ears: Ears
     private lateinit var face: AvatarView
@@ -38,6 +40,7 @@ class ListenActivity : Activity(), Ears.Listener {
         super.onCreate(savedInstanceState)
         prefs = Prefs(this)
         ears = Ears(this, this)
+        MicLock.acquire(LOCK)
         setContentView(buildUi())
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
             requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1)
@@ -60,9 +63,17 @@ class ListenActivity : Activity(), Ears.Listener {
             setPadding(dp(12), 0, 0, 0)
         }
         card.addView(label, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        root.addView(card, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
-            setMargins(dp(14), 0, dp(14), dp(40))
-        })
+        val lp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
+            setMargins(dp(14), 0, dp(14), dp(28))
+        }
+        root.addView(card, lp)
+        // keep the card clear of the gesture bar / navigation buttons, whatever the phone uses
+        root.setOnApplyWindowInsetsListener { _, insets ->
+            @Suppress("DEPRECATION") val bottom = insets.systemWindowInsetBottom
+            lp.bottomMargin = bottom + dp(20)
+            card.layoutParams = lp
+            insets
+        }
         return root
     }
 
@@ -111,6 +122,7 @@ class ListenActivity : Activity(), Ears.Listener {
 
     override fun onDestroy() {
         ears.stop()
+        MicLock.release(LOCK)
         main.removeCallbacksAndMessages(null)
         super.onDestroy()
     }

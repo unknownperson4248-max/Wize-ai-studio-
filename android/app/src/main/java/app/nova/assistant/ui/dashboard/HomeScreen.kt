@@ -98,8 +98,8 @@ fun HomeScreen(c: Controller, go: (String) -> Unit) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Tile("Phone control", if (s.controlOn) "On" else "Off", if (s.controlOn) J.Green else J.Amber, Modifier.weight(1f),
                 if (s.controlOn && s.foregroundApp.isNotEmpty()) "On screen: ${s.foregroundApp}" else "") { go("control") }
-            Tile("Background", if (s.controlOn) "Service running" else "Not running", if (s.controlOn) J.Green else J.SilverDim, Modifier.weight(1f),
-                if (s.batteryFree) "Battery: unrestricted" else "Battery: may be stopped") { c.askBattery() }
+            Tile("Hands-free", if (s.wakeOn) "Hey Jarvis on" else "Off", if (s.wakeOn) J.Green else J.SilverDim, Modifier.weight(1f),
+                if (s.batteryFree) "Battery: unrestricted" else "Battery: may be stopped") { go("settings") }
         }
 
         SectionTitle("Today")

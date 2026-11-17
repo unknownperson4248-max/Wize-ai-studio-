@@ -31,6 +31,7 @@ class Ears(private val context: Context, private val listener: Listener) {
 
     private val main = Handler(Looper.getMainLooper())
     private var rec: SpeechRecognizer? = null
+    private val lockTag = "ears-" + System.identityHashCode(this)
 
     fun start(lang: String) {
         stop()
@@ -42,6 +43,7 @@ class Ears(private val context: Context, private val listener: Listener) {
             listener.onBroken(-2); return
         }
         rec = r
+        MicLock.acquire(lockTag)
         r.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) { listener.onReady() }
             override fun onBeginningOfSpeech() {}
@@ -80,6 +82,7 @@ class Ears(private val context: Context, private val listener: Listener) {
     private fun release() {
         val old = rec ?: return
         rec = null
+        MicLock.release(lockTag)
         main.post { try { old.destroy() } catch (_: Exception) {} }
     }
 

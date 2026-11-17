@@ -25,6 +25,8 @@ class Brain(context: Context, private val ui: Ui, source: String) {
         fun note(text: String)
         fun confirm(question: String, answer: (Boolean) -> Unit)
         fun permission(permission: String, answer: (Boolean) -> Unit)
+        /** Conversation mode: JARVIS finished answering a spoken question, so listen for the follow-up. */
+        fun listenAgain() {}
     }
 
     val prefs = Prefs(context)
@@ -39,14 +41,40 @@ class Brain(context: Context, private val ui: Ui, source: String) {
     private var task: String? = null    // current task id
     private var lastReply = ""
     private var lastActionFailed = false
-    private val voice = Voice(context, prefs) { speaking -> if (speaking) ui.mood(Mood.SPEAKING) else if (!busy) ui.mood(Mood.IDLE) }
+    private var byVoice = false          // the current request was spoken (not typed)
+    private var followUp = false         // listen again once JARVIS has finished speaking
+    private var narratedLook = false     // "let me have a look" is said once per task
+    private val voice = Voice(context, prefs) { speaking ->
+        if (speaking) ui.mood(Mood.SPEAKING)
+        else if (!busy) {
+            ui.mood(Mood.IDLE)
+            if (followUp) { followUp = false; ui.listenAgain() }
+        }
+    }
 
-    fun ask(text: String) {
+    /** Voice engine description for Settings. */
+    val voiceInfo get() = voice.info
+    val banglaVoiceMissing get() = voice.banglaMissing
+
+    fun ask(text: String, spoken: Boolean = false) {
         if (busy) return
         voice.stop()
         task = recorder.start(text)
         lastReply = ""; lastActionFailed = false
+        byVoice = spoken; followUp = false; narratedLook = false
         call("Thinking…", 0) { api.say(text) }
+    }
+
+    /** Speaks a short line about what JARVIS is doing ("Opening WhatsApp"). */
+    private fun narrate(a: Api.Action) {
+        if (!prefs.speakReplies) return
+        if (a.name == "read_screen") { if (narratedLook) return; narratedLook = true }
+        val style = when {
+            prefs.voiceLang == "en-US" -> "en"
+            prefs.banglaVoice -> "bn"
+            else -> "banglish"
+        }
+        Narration.line(a.name, a.args.optString("app"), style)?.let { voice.say(it) }
     }
 
     /** Runs other server work (history, memory) on the same background thread. */
@@ -58,6 +86,7 @@ class Brain(context: Context, private val ui: Ui, source: String) {
     /** Emergency stop: silence, drop the running task, and ignore anything still on its way back. */
     fun stop() {
         gen++
+        followUp = false
         voice.stop()
         if (busy) {
             task?.let { recorder.step(it, "Stopped by the user", false); recorder.finish(it, TaskStatus.CANCELLED, lastReply, "Stopped by the user") }
@@ -88,6 +117,8 @@ class Brain(context: Context, private val ui: Ui, source: String) {
         task?.let { recorder.finish(it, Safety.finalStatus(false, null, lastActionFailed), lastReply) }
         task = null
         busy = false; ui.status(""); ui.mood(Mood.IDLE)
+        // conversation mode: once the spoken answer ends, listen for the follow-up
+        if (byVoice && prefs.conversation && prefs.speakReplies && lastReply.isNotBlank()) followUp = true
     }
 
     private fun fail(error: String) {
@@ -126,6 +157,7 @@ class Brain(context: Context, private val ui: Ui, source: String) {
             return
         }
         ui.status(actions.label(a.name))
+        narrate(a)
         val g = gen
         val id = task
         io.execute {
@@ -157,6 +189,6 @@ class Brain(context: Context, private val ui: Ui, source: String) {
     private fun report(a: Api.Action, result: String, depth: Int) = call("…", depth + 1) { api.sendResult(a, result) }
 
     companion object {
-        const val MAX_STEPS = 14
+        const val MAX_STEPS = 10
     }
 }
