@@ -74,8 +74,8 @@ class WakeService : Service(), Ears.Listener, Brain.Ui {
             description = "Shown while JARVIS listens for \"Hey Jarvis\""
         })
         try {
-            if (Build.VERSION.SDK_INT >= 30) startForeground(NOTE_ID, note("Listening for \"Hey Jarvis\""), ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
-            else startForeground(NOTE_ID, note("Listening for \"Hey Jarvis\""))
+            if (Build.VERSION.SDK_INT >= 30) startForeground(NOTE_ID, buildNotice("Listening for \"Hey Jarvis\""), ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+            else startForeground(NOTE_ID, buildNotice("Listening for \"Hey Jarvis\""))
         } catch (e: Exception) {
             // Android refuses a microphone service started from the background: the user turns it on again in the app
             stopSelf(); return
@@ -184,7 +184,7 @@ class WakeService : Service(), Ears.Listener, Brain.Ui {
 
     /* ---------------- notification ---------------- */
 
-    private fun note(text: String): Notification {
+    private fun buildNotice(text: String): Notification {
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         val stop = PendingIntent.getService(this, 1, Intent(this, WakeService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
         return Notification.Builder(this, CHANNEL)
@@ -200,6 +200,6 @@ class WakeService : Service(), Ears.Listener, Brain.Ui {
 
     private fun update(text: String) {
         if (!running) return
-        getSystemService(NotificationManager::class.java).notify(NOTE_ID, note(text.take(300)))
+        getSystemService(NotificationManager::class.java).notify(NOTE_ID, buildNotice(text.take(300)))
     }
 }
