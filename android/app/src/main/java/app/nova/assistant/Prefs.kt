@@ -23,5 +23,18 @@ class Prefs(context: Context) {
         get() = p.getBoolean("speak", true)
         set(v) = p.edit().putBoolean("speak", v).apply()
 
+    /** Show the floating bubble (needs phone control turned on). */
+    var bubble: Boolean
+        get() = p.getBoolean("bubble", true)
+        set(v) = p.edit().putBoolean("bubble", v).apply()
+
+    var bubbleX: Int
+        get() = p.getInt("bubbleX", -1)
+        set(v) = p.edit().putInt("bubbleX", v).apply()
+
+    var bubbleY: Int
+        get() = p.getInt("bubbleY", -1)
+        set(v) = p.edit().putInt("bubbleY", v).apply()
+
     val paired get() = token.length == 64
 }

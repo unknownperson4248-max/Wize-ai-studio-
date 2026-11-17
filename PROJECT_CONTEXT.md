@@ -30,13 +30,19 @@ Phase 1 (done, 2026-11-17)
 - [x] Android app: dark animated orb UI, chat, mic (Bangla/English), spoken replies, settings, pairing, memory list, clear chat
 - [x] Phone actions: open app, open URL, web search, call/SMS (confirmed, prepared), alarm, timer, torch, volume, battery, settings pages, maps directions
 - [x] GitHub Actions APK build + release
-- [ ] First APK build verified on GitHub Actions (see Actions tab)
+- [x] First APK build verified on GitHub Actions
+- [x] Installed and paired on the owner's phone (Honor); chat works
+
+Phase 2 (in progress, 2026-11-17)
+- [x] Mic fix: use Google's speech service directly (Honor default service gave error 5), fall back to the system voice dialog
+- [x] Animated intro screen (hologram face build-up, star field, neon grid)
+- [x] Phone control (Accessibility service): read_screen, tap, type_text, scroll, press; risky taps (send/pay/delete/...) need Yes; no typing into password fields
+- [x] whatsapp_message tool (confirm first, then the app presses send)
+- [x] Floating bubble: animated cyber-girl face (AvatarView), tap to talk (ListenActivity), hold to open, drag to move
 - [ ] Tested on the owner's phone
 
-Phase 2 (next)
-- [ ] Accessibility service: read the screen and tap/type in other apps (e.g. send a WhatsApp message)
+Next
 - [ ] Notification listener: read and summarise notifications
-- [ ] Floating bubble to call NOVA over any app
 - [ ] Wake word
 - [ ] Worker deploy from GitHub Actions (needs a Cloudflare API token as a GitHub secret)
 - [ ] Optional extra AI providers (Gemini/OpenRouter key in the worker as a secret) for better Bangla

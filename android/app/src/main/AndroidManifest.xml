@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- Android 11+: which other apps this app may see (to open apps by name and to use speech and voice services) -->
     <queries>
@@ -18,6 +19,11 @@
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
         </intent>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+        </intent>
+        <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
     </queries>
 
     <application
@@ -41,5 +47,28 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <!-- Listening card shown over other apps when the floating bubble is tapped. Own task, so the app below stays. -->
+        <activity
+            android:name=".ListenActivity"
+            android:exported="false"
+            android:theme="@style/NovaListen"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask" />
+
+        <!-- Phone control + floating bubble. The user turns it on in Android's Accessibility settings. -->
+        <service
+            android:name=".NovaAccessibility"
+            android:exported="true"
+            android:label="@string/control_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/nova_accessibility" />
+        </service>
     </application>
 </manifest>

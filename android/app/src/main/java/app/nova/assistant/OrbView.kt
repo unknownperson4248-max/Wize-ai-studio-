@@ -17,9 +17,8 @@ import kotlin.math.sin
 /** The animated core in the middle of the screen. Its motion shows what the assistant is doing. */
 class OrbView(context: Context) : View(context) {
 
-    enum class State { IDLE, LISTENING, THINKING, SPEAKING }
 
-    var state = State.IDLE
+    var state = Mood.IDLE
         set(v) { field = v; invalidate() }
     /** 0..1 microphone loudness while listening. */
     var level = 0f
@@ -43,12 +42,12 @@ class OrbView(context: Context) : View(context) {
         val cx = width / 2f
         val cy = height / 2f
         val base = min(width, height) * 0.30f
-        val speed = when (state) { State.IDLE -> 0.6f; State.LISTENING -> 1.4f; State.THINKING -> 2.6f; State.SPEAKING -> 1.8f }
+        val speed = when (state) { Mood.IDLE -> 0.6f; Mood.LISTENING -> 1.4f; Mood.THINKING -> 2.6f; Mood.SPEAKING -> 1.8f }
         val pulse = when (state) {
-            State.IDLE -> 0.03f * sin(t * 1.6f)
-            State.LISTENING -> 0.05f + level * 0.22f
-            State.THINKING -> 0.04f * sin(t * 6f)
-            State.SPEAKING -> 0.08f * (0.5f + 0.5f * sin(t * 9f))
+            Mood.IDLE -> 0.03f * sin(t * 1.6f)
+            Mood.LISTENING -> 0.05f + level * 0.22f
+            Mood.THINKING -> 0.04f * sin(t * 6f)
+            Mood.SPEAKING -> 0.08f * (0.5f + 0.5f * sin(t * 9f))
         }
         val r = base * (1f + pulse)
 
