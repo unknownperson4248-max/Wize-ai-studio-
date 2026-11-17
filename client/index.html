@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Wize AI Studio</title>
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  <meta name="apple-mobile-web-app-title" content="JARVIS" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #05070a;
+      --panel: rgba(15, 23, 42, 0.6);
+      --panel-border: rgba(56, 189, 248, 0.18);
+      --accent: #38bdf8;
+      --accent-glow: #38bdf880;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --danger: #f87171;
+      --success: #4ade80;
+    }
+    html, body { height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+      overflow-x: hidden;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #root { height: 100vh; width: 100vw; display: flex; flex-direction: column; }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: -20%;
+      background: radial-gradient(circle at 50% 50%, rgba(56,189,248,0.08), transparent 70%),
+                  radial-gradient(circle at 80% 20%, rgba(56,189,248,0.04), transparent 40%);
+      pointer-events: none;
+      z-index: -1;
+      animation: breathe 8s ease-in-out infinite alternate;
+    }
+    @keyframes breathe { from { opacity: 0.6; } to { opacity: 1; } }
+
+    .topbar {
+      position: sticky; top: 0; z-index: 50;
+      height: 56px; width: 100%;
+      background: rgba(5,7,10,0.75);
+      border-bottom: 1px solid var(--panel-border);
+      backdrop-filter: blur(8px);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 1rem;
+    }
+    .brand { display: flex; align-items: center; gap: 0.6rem; font-weight: 700; font-size: 1.1rem; letter-spacing: 0.05em; color: var(--accent); text-shadow: 0 0 10px var(--accent-glow); }
+    .brand .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse 2s infinite; }
+    .status { display: flex; align-items: center; gap: 0.75rem; font-size: 0.85rem; color: var(--muted); }
+    .badge { padding: 0.15rem 0.6rem; border-radius: 999px; border: 1px solid var(--panel-border); background: rgba(15,23,42,0.4); }
+
+    .main { flex: 1; overflow: hidden; position: relative; }
+
+    .jarvis-center {
+      position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10;
+      padding: 1rem;
+    }
+    .jarvis-ring {
+      width: 260px; height: 260px; border-radius: 50%;
+      border: 1px solid rgba(56,189,248,0.3);
+      box-shadow: inset 0 0 40px rgba(56,189,248,0.1), 0 0 40px rgba(56,189,248,0.08);
+      display: flex; align-items: center; justify-content: center;
+      position: relative; overflow: hidden;
+      animation: rotate 20s linear infinite;
+    }
+    .jarvis-ring:hover { border-color: var(--accent); box-shadow: inset 0 0 50px rgba(56,189,248,0.25), 0 0 60px rgba(56,189,248,0.2); }
+    @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+    .waveform {
+      display: flex; align-items: center; gap: 3px; height: 120px; width: 100%;
+      position: relative;
+    }
+    .wave-bar {
+      width: 4px; background: linear-gradient(180deg, var(--accent), #0ea5e9);
+      border-radius: 2px;
+      box-shadow: 0 0 8px var(--accent);
+      animation: wave 1.2s ease-in-out infinite;
+    }
+    .wave-bar:nth-child(2) { animation-delay: 0.1s; height: 60%; }
+    .wave-bar:nth-child(3) { animation-delay: 0.2s; height: 30%; }
+    .wave-bar:nth-child(4) { animation-delay: 0.3s; height: 80%; }
+    .wave-bar:nth-child(5) { animation-delay: 0.4s; height: 45%; }
+    .wave-bar:nth-child(6) { animation-delay: 0.5s; height: 70%; }
+    .wave-bar:nth-child(7) { animation-delay: 0.6s; height: 35%; }
+    @keyframes wave { 0%,100% { transform: scaleY(1); } 50% { transform: scaleY(2.2); } }
+
+    .jarvis-label {
+      margin-top: 1rem; color: var(--text); font-size: 1rem; font-weight: 600;
+      letter-spacing: 0.1em; opacity: 0.9;
+    }
+    .listening-indicator {
+      margin-top: 0.4rem; font-size: 0.8rem; color: var(--accent); font-weight: 600;
+      display: none; gap: 0.3rem; align-items: center;
+    }
+    .listening-indicator.active { display: flex; }
+    .listening-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); animation: pulse 1s infinite; }
+
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+    .mic-container { position: fixed; bottom: 1.6rem; left: 50%; transform: translateX(-50%); z-index: 60; }
+    .mic-btn {
+      width: 72px; height: 72px; border-radius: 50%; border: none;
+      background: var(--accent); color: var(--bg); font-size: 1.6rem; font-weight: 700;
+      cursor: pointer; box-shadow: 0 0 30px var(--accent-glow), 0 4px 12px rgba(0,0,0,0.3);
+      display: flex; align-items: center; justify-content: center;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .mic-btn:active { transform: scale(0.92); }
+    .mic-btn.listening {
+      background: var(--danger); animation: mic-pulse 1.5s ease-in-out infinite;
+    }
+    @keyframes mic-pulse { 0%,100% { box-shadow: 0 0 20px var(--danger); } 50% { box-shadow: 0 0 60px var(--danger); } }
+
+    .chat-panel {
+      position: fixed; inset: 0 auto 0 0; width: 100%; max-width: 420px;
+      background: rgba(5,7,10,0.9); border-top: 1px solid var(--panel-border);
+      border-left: 1px solid var(--panel-border); backdrop-filter: blur(12px);
+      z-index: 55; display: flex; flex-direction: column; transform: translateX(100%);
+      transition: transform 0.3s ease;
+    }
+    .chat-panel.open { transform: translateX(0); }
+    .chat-header {
+      padding: 1rem 1.2rem; border-bottom: 1px solid var(--panel-border);
+      display: flex; align-items: center; gap: 0.7rem; justify-content: space-between;
+    }
+    .chat-header h3 { font-size: 1rem; color: var(--accent); font-weight: 700; }
+    .close-chat { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1.2rem; }
+    .messages { flex: 1; overflow-y: auto; padding: 1rem; gap: 0.8rem; display: flex; flex-direction: column; }
+    .msg { padding: 0.7rem 0.9rem; border-radius: 12px; max-width: 85%; line-height: 1.4; font-size: 0.95rem; }
+    .msg.user { background: var(--panel); border: 1px solid var(--panel-border); align-self: flex-end; margin-left: auto; }
+    .msg.ai { background: rgba(56,189,248,0.1); border: 1px solid rgba(56,189,248,0.2); align-self: flex-start; }
+    .msg.system { font-size: 0.75rem; color: var(--muted); align-self: center; text-align: center; max-width: 100%; padding: 0.4rem; background: transparent; border: none; }
+    .chat-input-area { padding: 0.8rem; border-top: 1px solid var(--panel-border); display: flex; gap: 0.5rem; background: rgba(5,7,10,0.6); }
+    .chat-input { flex: 1; background: rgba(15,23,42,0.4); border: 1px solid var(--panel-border); border-radius: 10px; padding: 0.6rem 0.8rem; color: var(--text); font-size: 0.95rem; outline: none; }
+    .chat-input:focus { border-color: var(--accent); }
+    .send-btn { width: 40px; height: 40px; border-radius: 10px; border: none; background: var(--accent); color: var(--bg); font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+    .bottom-nav {
+      position: fixed; bottom: 0; left: 0; right: 0; height: 72px;
+      background: rgba(5,7,10,0.85); border-top: 1px solid var(--panel-border);
+      backdrop-filter: blur(12px); display: flex; justify-content: space-around; align-items: center; z-index: 58;
+    }
+    .nav-item { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; color: var(--muted); font-size: 0.7rem; cursor: pointer; padding: 0.4rem; }
+    .nav-item.active { color: var(--accent); text-shadow: 0 0 8px var(--accent-glow); }
+
+    .settings-panel { position: fixed; inset: 0; z-index: 60; background: rgba(5,7,10,0.95); display: none; flex-direction: column; }
+    .settings-panel.open { display: flex; }
+    .settings-content { padding: 1.5rem; overflow-y: auto; flex: 1; }
+    .settings-content h2 { color: var(--accent); margin-bottom: 1rem; font-size: 1.1rem; }
+    .setting-row { margin-bottom: 1rem; }
+    .setting-row label { display: block; color: var(--muted); font-size: 0.8rem; margin-bottom: 0.3rem; }
+    .setting-row input { width: 100%; background: rgba(15,23,42,0.4); border: 1px solid var(--panel-border); border-radius: 8px; padding: 0.5rem; color: var(--text); }
+    .setting-row select { width: 100%; background: rgba(15,23,42,0.4); border: 1px solid var(--panel-border); border-radius: 8px; padding: 0.5rem; color: var(--text); }
+    .setting-row button { width: 100%; margin-top: 0.5rem; }
+
+    .toggle-row { display: flex; justify-content: space-between; align-items: center; padding: 0.6rem 0; border-bottom: 1px solid var(--panel-border); }
+    .toggle { position: relative; width: 44px; height: 24px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; inset: 0; background: var(--panel-border); border-radius: 34px; cursor: pointer; transition: .2s; }
+    .slider:before { content: ""; position: absolute; height: 18px; width: 18px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: .2s; }
+    input:checked + .slider { background: var(--accent); }
+    input:checked + .slider:before { transform: translateX(20px); }
+
+    .btn { background: var(--accent); color: var(--bg); border: none; padding: 0.5rem 1rem; border-radius: 6px; font-weight: 700; cursor: pointer; }
+
+    .hidden { display: none !important; }
+
+    .confirm-overlay {
+      position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center;
+    }
+    .confirm-overlay.active { display: flex; }
+    .confirm-box { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 12px; padding: 1.5rem; width: 90%; max-width: 340px; backdrop-filter: blur(12px); }
+    .confirm-box h4 { color: var(--accent); margin-bottom: 0.5rem; }
+    .confirm-box p { color: var(--muted); margin-bottom: 1rem; font-size: 0.9rem; }
+    .confirm-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
+    .confirm-btn { padding: 0.5rem 1rem; border-radius: 6px; border: none; font-weight: 700; cursor: pointer; }
+    .confirm-yes { background: var(--danger); color: white; }
+    .confirm-no { background: rgba(15,23,42,0.4); color: var(--text); border: 1px solid var(--panel-border); }
+
+    .dashboard-btn {
+      background: rgba(15,23,42,0.4); border: 1px solid var(--panel-border); color: var(--text);
+      padding: 0.5rem 1rem; border-radius: 6px; font-weight: 700; cursor: pointer;
+    }
+
+    @media (max-width: 480px) {
+      .jarvis-ring { width: 220px; height: 220px; }
+      .bottom-nav { height: 64px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root">
+    <div class="topbar">
+      <div class="brand"><div class="dot"></div>JARVIS</div>
+      <div class="status" id="statusBar"><span class="badge" id="statusBadge">Ready</span></div>
+    </div>
+
+    <div class="main">
+      <div class="jarvis-center">
+        <div class="jarvis-ring" id="jarvisRing">
+          <div class="waveform" id="waveform">
+            <div class="wave-bar" style="animation-delay: 0s;"></div>
+            <div class="wave-bar" style="animation-delay: 0.1s; height: 60%;"></div>
+            <div class="wave-bar" style="animation-delay: 0.2s; height: 30%;"></div>
+            <div class="wave-bar" style="animation-delay: 0.3s; height: 80%;"></div>
+            <div class="wave-bar" style="animation-delay: 0.4s; height: 45%;"></div>
+            <div class="wave-bar" style="animation-delay: 0.5s; height: 70%;"></div>
+            <div class="wave-bar" style="animation-delay: 0.6s; height: 35%;"></div>
+            <div class="wave-bar" style="animation-delay: 0.7s; height: 55%;"></div>
+            <div class="wave-bar" style="animation-delay: 0.8s; height: 25%;"></div>
+            <div class="wave-bar" style="animation-delay: 0.9s; height: 75%;"></div>
+            <div class="wave-bar" style="animation-delay: 1.0s; height: 40%;"></div>
+            <div class="wave-bar" style="animation-delay: 1.1s; height: 65%;"></div>
+            <div class="wave-bar" style="animation-delay: 1.2s; height: 30%;"></div>
+            <div class="wave-bar" style="animation-delay: 1.3s; height: 85%;"></div>
+            <div class="wave-bar" style="animation-delay: 1.4s; height: 50%;"></div>
+            <div class="wave-bar" style="animation-delay: 1.5s; height: 40%;"></div>
+          </div>
+        </div>
+        <div class="jarvis-label">JARVIS Online</div>
+        <div class="listening-indicator" id="listeningIndicator">
+          <div class="listening-dot"></div><span id="listeningText">Idle</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="chat-panel" id="chatPanel">
+      <div class="chat-header">
+        <div style="display:flex;align-items:center;gap:0.7rem"><div class="dot" style="width:6px;height:6px;"></div><h3>JARVIS</h3></div>
+        <button class="close-chat" id="closeChat">✕</button>
+      </div>
+      <div class="messages" id="messages"></div>
+      <div class="chat-input-area">
+        <input class="chat-input" id="chatInput" placeholder="Ask JARVIS..." />
+        <button class="send-btn" id="sendBtn">→</button>
+      </div>
+    </div>
+
+    <div class="mic-container">
+      <button class="mic-btn" id="micBtn" aria-label="Toggle voice input">🎤</button>
+    </div>
+
+    <div class="bottom-nav">
+      <div class="nav-item active" id="navChat" data-tab="chat">Chat</div>
+      <div class="nav-item" id="navAuto" data-tab="automation">Automation</div>
+      <div class="nav-item" id="navMem" data-tab="memory">Memory</div>
+      <div class="nav-item" id="navSettings" data-tab="settings">Settings</div>
+    </div>
+
+    <div class="settings-panel" id="settingsPanel">
+      <div class="settings-content">
+        <h2>JARVIS Settings</h2>
+
+        <div class="setting-row">
+          <label>LLM Base URL</label>
+          <input id="llmBaseUrl" placeholder="http://localhost:3001/v1" />
+        </div>
+        <div class="setting-row">
+          <label>LLM Model</label>
+          <input id="llmModel" placeholder="auto" />
+        </div>
+        <div class="setting-row">
+          <label>API Key (stored locally, never sent anywhere except LLM)</label>
+          <input type="password" id="llmApiKey" placeholder="sk-..." />
+        </div>
+        <button class="btn" id="saveSettings">Save Settings</button>
+        <button class="btn" style="background:transparent;border:1px solid var(--panel-border);color:var(--muted);margin-top:0.5rem" id="clearMemory">Clear Chat Memory</button>
+
+        <div style="margin-top: 2rem;">
+          <div class="setting-row">
+            <label>Speech Recognition Language</label>
+            <select id="sttLang">
+              <option value="en-US">English (US)</option>
+              <option value="bn-BD">Bengali (BD)</option>
+              <option value="bn-IN">Bengali (IN)</option>
+            </select>
+          </div>
+          <div class="setting-row">
+            <label>Text-to-Speech Language</label>
+            <select id="ttsLang">
+              <option value="en-US">English (US)</option>
+              <option value="bn-BD">Bengali (BD)</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="margin-top: 1.5rem;">
+          <div class="toggle-row">
+            <span style="color: var(--text);">TTS Enabled</span>
+            <label class="toggle">
+              <input type="checkbox" id="ttsEnabled" checked />
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="confirm-overlay" id="confirmOverlay">
+      <div class="confirm-box">
+        <h4 id="confirmTitle">Confirm Action</h4>
+        <p id="confirmMessage"></p>
+        <div class="confirm-actions">
+          <button class="confirm-btn confirm-no" id="confirmNo">No</button>
+          <button class="confirm-btn confirm-yes" id="confirmYes">Yes</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="dashboardContainer" style="display:none;"></div>
+  </div>
+
+  <script type="module">
+    // ============ API CLIENT ============
+    const BASE = "/api";
+    async function apiHealth() { const r = await fetch(`${BASE}/health`); return r.json(); }
+    async function apiChat(message, history, model) {
+      const r = await fetch(`${BASE}/chat`, { method: "POST", headers: {"content-type":"application/json"}, body: JSON.stringify({message, history, model, apiKey: localStorage.getItem("jarvis_llm_api_key") || ""}) });
+      return r.json();
+    }
+    async function apiTool(name, args) {
+      const r = await fetch(`${BASE}/tool`, { method: "POST", headers: {"content-type":"application/json"}, body: JSON.stringify({name, arguments: args}) });
+      return r.json();
+    }
+
+    // ============ STT (Web Speech API) ============
+    class STT {
+      constructor() {
+        this.rec = null;
+        this.listening = false;
+        this.onResult = null;
+        this.onEnd = null;
+        this.lang = "en-US";
+      }
+      init(lang = "en-US") {
+        if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
+          console.warn("SpeechRecognition not supported");
+          return false;
+        }
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        this.rec = new SR();
+        this.rec.continuous = true;
+        this.rec.interimResults = true;
+        this.rec.lang = lang;
+        this.rec.onresult = (e) => {
+          let final = "", interim = "";
+          for (let i = e.resultIndex; i < e.results.length; i++) {
+            const t = e.results[i][0].transcript;
+            if (e.results[i].isFinal) final += t; else interim += t;
+          }
+          if (this.onResult) this.onResult(final, interim);
+        };
+        this.rec.onerror = (e) => { console.error("STT error", e); };
+        this.rec.onend = () => {
+          if (this.listening && !this._paused) { try { this.rec.start(); } catch {} }
+          if (this.onEnd) this.onEnd();
+        };
+        return true;
+      }
+      start(lang) { if (!this.rec || this.rec.lang !== lang) this.init(lang); if (!this.rec) return false; this.listening = true; try { this.rec.start(); } catch {}; return true; }
+      stop() { this.listening = false; if (this.rec) try { this.rec.stop(); } catch {} }
+      setLang(l) { this.lang = l; if (this.rec) this.rec.lang = l; }
+    }
+    const stt = new STT();
+
+    // ============ TTS (Web Speech API) ============
+    class TTS {
+      constructor() {
+        this.synth = window.speechSynthesis || null;
+        this.voices = [];
+        this.enabled = true;
+        this.lang = "en-US";
+        if (this.synth) { this.loadVoices(); this.synth.onvoiceschanged = () => this.loadVoices(); }
+      }
+      loadVoices() { if (!this.synth) return; this.voices = this.synth.getVoices(); }
+      speak(text, lang) { if (!this.enabled || !this.synth) return; const u = new SpeechSynthesisUtterance(text); u.lang = lang || this.lang; const m = this.voices.find(v => v.lang === u.lang) || this.voices.find(v => v.lang.startsWith(u.lang.split("-")[0])); if (m) u.voice = m; u.rate = 1; u.pitch = 1; this.synth.speak(u); }
+      stop() { if (this.synth) this.synth.cancel(); }
+      setEnabled(v) { this.enabled = v; }
+      setLang(l) { this.lang = l; }
+    }
+    const tts = new TTS();
+
+    // ============ STATE ============
+    let messages = [];
+    let listening = false;
+    let speaking = false;
+    let chatOpen = false;
+    let settingsOpen = false;
+    let dashOpen = false;
+    let statusText = "Ready";
+    let pendingConfirm = null;
+    let navTab = "chat";
+
+    // DOM refs
+    const $ = (s) => document.querySelector(s);
+    const $$ = (s) => document.querySelectorAll(s);
+    const el = {
+      statusBadge: $("#statusBadge"),
+      listeningIndicator: $("#listeningIndicator"),
+      listeningText: $("#listeningText"),
+      chatPanel: $("#chatPanel"),
+      messages: $("#messages"),
+      chatInput: $("#chatInput"),
+      sendBtn: $("#sendBtn"),
+      closeChat: $("#closeChat"),
+      micBtn: $("#micBtn"),
+      settingsPanel: $("#settingsPanel"),
+      dashboardContainer: $("#dashboardContainer"),
+      confirmOverlay: $("#confirmOverlay"),
+      confirmTitle: $("#confirmTitle"),
+      confirmMessage: $("#confirmMessage"),
+      confirmYes: $("#confirmYes"),
+      confirmNo: $("#confirmNo"),
+      navTabs: $$(".nav-item"),
+      llmBaseUrl: $("#llmBaseUrl"),
+      llmModel: $("#llmModel"),
+      llmApiKey: $("#llmApiKey"),
+      saveSettings: $("#saveSettings"),
+      clearMemory: $("#clearMemory"),
+      sttLang: $("#sttLang"),
+      ttsLang: $("#ttsLang"),
+      ttsEnabled: $("#ttsEnabled"),
+    };
+
+    // ============ HELPERS ============
+    function setStatus(s) { statusText = s; el.statusBadge.textContent = s; }
+    function showListening(v) {
+      listening = v;
+      el.listeningIndicator.classList.toggle("active", v);
+      el.listeningText.textContent = v ? "Listening..." : "Idle";
+      el.micBtn.classList.toggle("listening", v);
+      setStatus(v ? "Listening..." : "Ready");
+    }
+    function showSpeaking(v) {
+      speaking = v;
+      if (v) setStatus("Speaking...");
+    }
+    function openChat() { chatOpen = true; el.chatPanel.classList.add("open"); setNav("chat"); }
+    function closeChat() { chatOpen = false; el.chatPanel.classList.remove("open"); }
+    function openSettings() { settingsOpen = true; el.settingsPanel.classList.add("open"); setNav("settings"); }
+    function closeSettings() { settingsOpen = false; el.settingsPanel.classList.remove("open"); }
+    function openDashboard() { dashOpen = true; renderDashboard(); setNav("automation"); }
+    function closeDashboard() { dashOpen = false; el.dashboardContainer.style.display = "none"; }
+    function setNav(tab) { navTab = tab; $$(".nav-item").forEach(n => n.classList.toggle("active", n.dataset.tab === tab)); }
+    function scrollMessages() { el.messages.scrollTop = el.messages.scrollHeight; }
+
+    function addMessage(role, content) {
+      messages.push({ role, content });
+      const div = document.createElement("div");
+      div.className = `msg ${role}`;
+      div.textContent = content;
+      el.messages.appendChild(div);
+      scrollMessages();
+    }
+
+    function renderDashboard() {
+      el.dashboardContainer.style.display = "block";
+      el.dashboardContainer.innerHTML = `
+        <div class="settings-panel open" style="display:flex">
+          <div class="settings-content">
+            <h2>Device Automation</h2>
+            <div class="setting-row">
+              <label>Battery Status</label>
+              <div id="batteryOut" style="padding:0.5rem;background:rgba(15,23,42,0.4);border-radius:8px;border:1px solid var(--panel-border);color:var(--muted);">Loading...</div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-top:1rem;">
+              ${[
+                { label: "Torch On", name: "torch_on", args: {} },
+                { label: "Torch Off", name: "torch_off", args: {} },
+                { label: "Volume Up", name: "volume_set", args: { stream: "music", level: 8 } },
+                { label: "Volume Down", name: "volume_set", args: { stream: "music", level: 2 } },
+                { label: "Clipboard Set", name: "clipboard_set", args: { text: "Hello from JARVIS" } },
+                { label: "Clipboard Get", name: "clipboard_get", args: {} },
+                { label: "Open URL", name: "open_url", args: { url: "https://example.com" } },
+                { label: "Toast", name: "show_toast", args: { message: "JARVIS is here" } },
+                { label: "Vibrate", name: "vibrate", args: { duration: 500 } },
+              ].map((a, i) => `<button class="dashboard-btn" data-name="${a.name}" data-args='${JSON.stringify(a.args)}'>${a.label}</button>`).join("")}
+            </div>
+          </div>
+        </div>`;
+      // Wire buttons
+      $$("#dashboardContainer .dashboard-btn").forEach(b => {
+        b.onclick = async () => {
+          setStatus(`Running ${b.dataset.name}...`);
+          const args = JSON.parse(b.dataset.args);
+          const res = await apiTool(b.dataset.name, args);
+          if (res.type === "confirmation") {
+            openConfirm(res.title || "Confirm", res.message || "Are you sure?", b.dataset.name, args);
+            return;
+          }
+          const out = res.result || JSON.stringify(res);
+          setStatus(`Done: ${out}`);
+          addMessage("system", `${b.dataset.name}: ${out}`);
+          tts.speak(out);
+        };
+      });
+      // Refresh battery
+      refreshBattery();
+    }
+    async function refreshBattery() {
+      const res = await apiTool("battery_status");
+      const out = $("#batteryOut");
+      if (out) out.textContent = res.result || "No data";
+    }
+
+    function openConfirm(title, message, toolName, args) {
+      pendingConfirm = { toolName, args };
+      el.confirmTitle.textContent = title;
+      el.confirmMessage.textContent = message;
+      el.confirmOverlay.classList.add("active");
+    }
+    function closeConfirm() { pendingConfirm = null; el.confirmOverlay.classList.remove("active"); }
+    async function doConfirm() {
+      if (!pendingConfirm) return;
+      const { toolName, args } = pendingConfirm;
+      closeConfirm();
+      setStatus(`Executing ${toolName}...`);
+      const res = await apiTool(toolName, args);
+      setStatus(`Done: ${res.result || JSON.stringify(res)}`);
+      addMessage("system", `${toolName}: ${res.result || JSON.stringify(res)}`);
+      tts.speak(res.result || "Done");
+    }
+
+    // ============ MAIN LOGIC ============
+    async function sendChat(text) {
+      const clean = text.trim(); if (!clean) return;
+      addMessage("user", clean);
+      setStatus(`Processing: ${clean}`);
+      try {
+        const history = messages.filter(m => m.role !== "system").map(m => ({ role: m.role, content: m.content }));
+        const res = await apiChat(clean, history, localStorage.getItem("jarvis_llm_model") || "auto");
+        if (res.error) {
+          addMessage("ai", `Error: ${res.error}`);
+          tts.speak(`Error: ${res.error}`);
+          setStatus("Error");
+          return;
+        }
+        const content = res.choices?.[0]?.message?.content || "No response";
+        addMessage("ai", content);
+        setStatus("Done");
+        showSpeaking(true);
+        tts.speak(content, el.ttsLang.value);
+        setTimeout(() => showSpeaking(false), 5000);
+      } catch (e) {
+        addMessage("ai", `Connection error: ${e.message}`);
+        tts.speak("Connection error");
+        setStatus("Error");
+      }
+    }
+
+    // ============ EVENTS ============
+    el.sendBtn.onclick = () => { sendChat(el.chatInput.value); el.chatInput.value = ""; };
+    el.chatInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { el.sendBtn.click(); } });
+    el.closeChat.onclick = closeChat;
+    el.saveSettings.onclick = () => {
+      localStorage.setItem("jarvis_llm_base", el.llmBaseUrl.value);
+      localStorage.setItem("jarvis_llm_model", el.llmModel.value);
+      localStorage.setItem("jarvis_llm_api_key", el.llmApiKey.value);
+      tts.speak("Settings saved");
+      closeSettings();
+    };
+    el.clearMemory.onclick = () => { localStorage.clear(); tts.speak("Memory cleared"); closeSettings(); };
+    el.sttLang.onchange = () => { stt.setLang(el.sttLang.value); };
+    el.ttsLang.onchange = () => { tts.setLang(el.ttsLang.value); };
+    el.ttsEnabled.onchange = () => { tts.setEnabled(el.ttsEnabled.checked); };
+
+    // Nav
+    $$(".nav-item").forEach(n => { n.onclick = () => { const t = n.dataset.tab; if (t === "chat") openChat(); else if (t === "automation") openDashboard(); else if (t === "settings") openSettings(); else if (t === "memory") { tts.speak("Memory panel coming soon"); } }; });
+
+    // Mic button
+    el.micBtn.onclick = async () => {
+      if (listening) { showListening(false); stt.stop(); return; }
+      const ok = stt.init("en-US");
+      if (!ok) { setStatus("Speech recognition not supported"); return; }
+      showListening(true);
+      stt.onResult = (final, interim) => {
+        if (final) {
+          showListening(false);
+          stt.stop();
+          sendChat(final);
+        }
+      };
+      stt.onEnd = () => {
+        if (listening) { stt.start(el.sttLang.value); }
+        else { showListening(false); }
+      };
+      stt.start(el.sttLang.value);
+    };
+
+    // Confirm dialog
+    el.confirmYes.onclick = doConfirm;
+    el.confirmNo.onclick = closeConfirm;
+
+    // Load settings from localStorage
+    el.llmBaseUrl.value = localStorage.getItem("jarvis_llm_base") || "http://localhost:3001/v1";
+    el.llmModel.value = localStorage.getItem("jarvis_llm_model") || "auto";
+    el.llmApiKey.value = localStorage.getItem("jarvis_llm_api_key") || "";
+    const savedLang = localStorage.getItem("jarvis_stt_lang");
+    if (savedLang) { el.sttLang.value = savedLang; stt.setLang(savedLang); }
+    const savedTtsLang = localStorage.getItem("jarvis_tts_lang");
+    if (savedTtsLang) { el.ttsLang.value = savedTtsLang; tts.setLang(savedTtsLang); }
+
+    // Initial health check
+    apiHealth().then(d => { setStatus(d.status === "ok" ? "Connected" : "Server error"); addMessage("system", "JARVIS online. Tap the mic or type a command."); }).catch(() => { setStatus("Server unreachable"); addMessage("system", "Server not running. Start with: npm start"); });
+
+    // Register SW
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+  </script>
+</body>
+</html>
