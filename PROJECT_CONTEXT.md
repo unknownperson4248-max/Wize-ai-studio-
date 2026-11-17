@@ -1,7 +1,22 @@
-# PROJECT_CONTEXT: NOVA personal phone assistant
+# PROJECT_CONTEXT: JARVIS personal & business assistant
 
-Working name NOVA (to be renamed later). Owner works from an Android phone only: everything must be built and
-hosted online (GitHub Actions + Cloudflare). No Termux, no local dev server, no local Android SDK.
+Was called NOVA during phases 0-1 of the first plan; renamed JARVIS when the full spec arrived (2026-11-17).
+Android applicationId stays `app.nova.assistant` so new builds install over the old app; the worker is still named `nova-assistant`.
+Owner works from an Android phone only: everything is built and hosted online (GitHub Actions + Cloudflare).
+
+## Build environment
+- This cloud workspace has Java 21 and Gradle, but no Android SDK platform (installing it needs accepting the SDK license, which was not done here).
+- APKs are built by `.github/workflows/android.yml`: unit tests (`gradle testReleaseUnitTest`), then `assembleRelease`, published as release `nova-latest` (asset `nova.apk`).
+
+## Spec phases (owner's JARVIS master prompt)
+1. App + dashboard: DONE (this commit). Compose UI (Home, JARVIS core, Tasks, Control, Settings, Security), Room DB (tasks, task_steps, action_log, products), task recording for every request, action/audit log, emergency stop, pause automation, voice speed/volume, permission dashboard, unit tests in CI.
+2. Voice + AI brain: partly done earlier (STT with Google service + dialog fallback, TTS, tool-calling loop on Workers AI). TODO: provider layer in the app (Claude / OpenAI / compatible) with keys encrypted by Android Keystore, usage tracking, wake phrase "Hey Jarvis".
+3. Accessibility phone control: done earlier (read_screen, tap, type_text, scroll, press, risky-tap approval, bubble). TODO: horizontal swipe tool, screenshots, foreground-app tool.
+4. Notification intelligence + WhatsApp workflows: TODO (NotificationListenerService, consent switch, summaries, reply drafts).
+5. Inventory: TODO screens/tools (products table already exists; dashboard reads low stock).
+6. Customers & orders: TODO.
+7. Autonomous task engine: task records exist; TODO multi-step plans with approval summary.
+8. Foreground service, Keystore secrets, release hardening: TODO.
 
 ## Architecture
 - `android/`: Kotlin app, no external libraries (platform APIs only). Voice in: Android SpeechRecognizer (bn-BD / en-US).
