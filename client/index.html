@@ -331,6 +331,14 @@
       const r = await fetch(`${BASE}/tool`, { method: "POST", headers: {"content-type":"application/json"}, body: JSON.stringify({name, arguments: args}) });
       return r.json();
     }
+    async function apiToolConfirm(token) {
+      const r = await fetch(`${BASE}/tool/confirm`, { method: "POST", headers: {"content-type":"application/json"}, body: JSON.stringify({token}) });
+      return r.json();
+    }
+    async function apiToolConfirm(token) {
+      const r = await fetch(`${BASE}/tool/confirm`, { method: "POST", headers: {"content-type":"application/json"}, body: JSON.stringify({token}) });
+      return r.json();
+    }
 
     // ============ STT (Web Speech API) ============
     class STT {
@@ -494,7 +502,7 @@
           const args = JSON.parse(b.dataset.args);
           const res = await apiTool(b.dataset.name, args);
           if (res.type === "confirmation") {
-            openConfirm(res.title || "Confirm", res.message || "Are you sure?", b.dataset.name, args);
+            openConfirm(res.title || "Confirm", res.message || "Are you sure?", res.token, b.dataset.name, args);
             return;
           }
           const out = res.result || JSON.stringify(res);
@@ -512,8 +520,8 @@
       if (out) out.textContent = res.result || "No data";
     }
 
-    function openConfirm(title, message, toolName, args) {
-      pendingConfirm = { toolName, args };
+    function openConfirm(title, message, token, toolName, args) {
+      pendingConfirm = { toolName, args, token };
       el.confirmTitle.textContent = title;
       el.confirmMessage.textContent = message;
       el.confirmOverlay.classList.add("active");
@@ -521,10 +529,10 @@
     function closeConfirm() { pendingConfirm = null; el.confirmOverlay.classList.remove("active"); }
     async function doConfirm() {
       if (!pendingConfirm) return;
-      const { toolName, args } = pendingConfirm;
+      const { token, toolName, args } = pendingConfirm;
       closeConfirm();
       setStatus(`Executing ${toolName}...`);
-      const res = await apiTool(toolName, args);
+      const res = await apiToolConfirm(token);
       setStatus(`Done: ${res.result || JSON.stringify(res)}`);
       addMessage("system", `${toolName}: ${res.result || JSON.stringify(res)}`);
       tts.speak(res.result || "Done");

@@ -121,10 +121,15 @@ function dispatchTool(toolName, args) {
         execSync(`termux-vibrate ${duration}`, { stdio: "ignore" });
         return `Vibrated for ${duration}ms`;
 
+      // These require confirmation before execution
+      case "sms_send":
+        return { type: "confirmation", title: args?.title ?? "Send SMS", message: args?.message ?? "Are you sure you want to send this SMS?" };
+
+      case "call_make":
+        return { type: "confirmation", title: args?.title ?? "Make Call", message: args?.message ?? "Are you sure you want to make this call?" };
+
       case "dialog_confirm":
-        // For simple yes/no dialog — termux-dialog exists but may not be available
-        // We'll return a marker; UI handles the confirmation
-        return { type: "dialog", title: args?.title ?? "Confirm", message: args?.message ?? "Are you sure?" };
+        return { type: "confirmation", title: args?.title ?? "Confirm", message: args?.message ?? "Are you sure?" };
 
       default:
         console.warn(`Unknown tool: ${toolName}`);
@@ -138,6 +143,12 @@ function dispatchTool(toolName, args) {
 
 // --- Generic tool-calling endpoint ---
 // AI sends: { name: "tool_name", arguments: { ... } }
+// SMS/call require confirmation token before execution.
+
+// Pending confirmations: token -> { toolName, args, title, message }
+const pendingConfirmations = new Map();
+let tokenCounter = 0;
+
 app.post("/api/tool", (req, res) => {
   const { name, arguments: argsRaw } = req.body;
 
@@ -148,12 +159,118 @@ app.post("/api/tool", (req, res) => {
   const args = argsRaw || {};
   const result = dispatchTool(name, args);
 
-  // If result is an object with type:dialog, treat as confirmation marker
-  if (typeof result === "object" && result.type === "dialog") {
-    return res.json({ type: "confirmation", title: result.title, message: result.message, tool: name });
+  // If result is a confirmation marker, issue a token and require user to confirm
+  if (typeof result === "object" && result.type === "confirmation") {
+    const token = `confirm_${++tokenCounter}_${Date.now()}`;
+    pendingConfirmations.set(token, { toolName: name, args, title: result.title, message: result.message });
+    return res.json({
+      type: "confirmation",
+      token,
+      title: result.title,
+      message: result.message,
+      tool: name,
+    });
   }
 
   res.json({ type: "tool_result", tool: name, result });
+});
+
+// --- Execute tool without confirmation check (for confirmed tools) ---
+function executeTool(toolName, args) {
+  try {
+    switch (toolName) {
+      case "sms_send":
+        const smsPhone = args?.phone;
+        const smsMessage = args?.message;
+        if (!smsPhone) return { error: "phone number required" };
+        // Use termux-sms-send with -n flag
+        execSync(`termux-sms-send -n "${smsPhone}" "${smsMessage}"`, { stdio: "ignore" });
+        return `SMS sent to ${smsPhone}`;
+
+      case "call_make":
+        const callPhone = args?.phone;
+        if (!callPhone) return { error: "phone number required" };
+        // Use termux-telephony-call
+        execSync(`termux-telephony-call "${callPhone}"`, { stdio: "ignore" });
+        return `Call initiated to ${callPhone}`;
+
+      case "battery_status":
+        return execSync("termux-battery-status", { encoding: "utf-8" }).trim();
+
+      case "torch_on":
+        execSync("termux-torch on", { stdio: "ignore" });
+        return "Torch turned on";
+
+      case "torch_off":
+        execSync("termux-torch off", { stdio: "ignore" });
+        return "Torch turned off";
+
+      case "volume_set":
+        const level = args?.level ?? 5;
+        execSync(`termux-volume ${args?.stream || "music"} ${level}`, { stdio: "ignore" });
+        return `Volume set to ${level}`;
+
+      case "notification_show":
+        const title = args?.title ?? "JARVIS";
+        const content = args?.content ?? "Action completed";
+        execSync(`termux-notification --title "${title}" --content "${content}"`, { stdio: "ignore" });
+        return `Notification shown: ${title}`;
+
+      case "clipboard_set":
+        const text = args?.text ?? "";
+        execSync(`termux-clipboard-set "${text}"`, { stdio: "ignore" });
+        return `Clipboard set: ${text}`;
+
+      case "clipboard_get":
+        return execSync("termux-clipboard-get", { encoding: "utf-8" }).trim();
+
+      case "open_app":
+        const packageName = args?.packageName ?? "com.termux";
+        execSync(`termux-open com.termux`, { stdio: "ignore" });
+        return `Opening app: ${packageName}`;
+
+      case "open_url":
+        const url = args?.url ?? "https://example.com";
+        execSync(`termux-open-url "${url}"`, { stdio: "ignore" });
+        return `Opening URL: ${url}`;
+
+      case "show_toast":
+        const toastMsg = args?.message ?? "Action completed";
+        execSync(`termux-toast -s short "${toastMsg}"`, { stdio: "ignore" });
+        return `Toast shown: ${toastMsg}`;
+
+      case "vibrate":
+        const duration = args?.duration ?? 1000;
+        execSync(`termux-vibrate ${duration}`, { stdio: "ignore" });
+        return `Vibrated for ${duration}ms`;
+
+      default:
+        console.warn(`Unknown tool: ${toolName}`);
+        return { error: `Unknown tool: ${toolName}` };
+    }
+  } catch (e) {
+    console.error(`Tool execution error [${toolName}]:`, e);
+    return { error: e.message || "Tool execution failed" };
+  }
+}
+
+// --- Confirm endpoint: executes a pending tool call only if token is valid ---
+app.post("/api/tool/confirm", (req, res) => {
+  const { token } = req.body;
+  if (!token) {
+    return res.status(400).json({ error: "token is required" });
+  }
+
+  const pending = pendingConfirmations.get(token);
+  if (!pending) {
+    return res.status(404).json({ error: "invalid or expired confirmation token" });
+  }
+
+  // Execute the tool using the separate execute function
+  const result = executeTool(pending.toolName, pending.args);
+  pendingConfirmations.delete(token);
+
+  res.json({ type: "tool_result", tool: pending.toolName, result });
 });
 
 // --- Serve index.html if client dir has index.html ---
@@ -161,10 +278,10 @@ app.get("*", (req, res) => {
   res.sendFile("index.html", { root: "client" });
 });
 
-app.listen(PORT, () => {
-  console.log(`JARVIS Termux Server running at http://localhost:${PORT}`);
+app.listen(PORT, '127.0.0.1', () => {
+  console.log(`JARVIS Termux Server running at http://127.0.0.1:${PORT}`);
   console.log(`FreeLLMAPI proxy target: ${process.env.LLM_BASE_URL || "http://localhost:3001/v1"}`);
-  console.log(`Tool bridge: termux-api v0.60.0`);
+  console.log(`Tool bridge: termux-api v0.60.0 — fixed tool list only, no arbitrary shell commands`);
 });
 
 export default app;
