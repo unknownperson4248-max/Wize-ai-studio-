@@ -40,7 +40,9 @@ class OrbView(context: Context) : View(context) {
     override fun onDetachedFromWindow() { anim.cancel(); super.onDetachedFromWindow() }
 
     override fun onDraw(c: Canvas) {
-        val cx = width / 2f, cy = height / 2f, base = min(width, height) * 0.30f
+        val cx = width / 2f
+        val cy = height / 2f
+        val base = min(width, height) * 0.30f
         val speed = when (state) { State.IDLE -> 0.6f; State.LISTENING -> 1.4f; State.THINKING -> 2.6f; State.SPEAKING -> 1.8f }
         val pulse = when (state) {
             State.IDLE -> 0.03f * sin(t * 1.6f)
